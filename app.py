@@ -111,6 +111,34 @@ def elabora_dati(file_pdf, file_csv):
                         except IndexError:
                             pass
 
+    # ==========================================
+    # LETTURA CSV (Invariata)
+    # ==========================================
+    if file_csv is not None:
+        df_csv = pd.read_csv(file_csv, sep=';', dtype=str).fillna("")
+        for index, row in df_csv.iterrows():
+            try:
+                # REINSERISCI QUI I NOMI ESATTI DELLE TUE COLONNE CSV
+                destinatario_csv = row['RAGIONE SOCIALE DESTINATARIO']
+                indirizzo_csv = row['INDIRIZZO']
+                peso_csv = row['PESO LORDO']
+                ddt_csv = row['DDT']
+                
+                if destinatario_csv == "": continue
+                
+                id_univoco_csv = genera_id(destinatario_csv, ddt_csv)
+                spedizioni[id_univoco_csv] = {
+                    "ID_Pacco": id_univoco_csv, 
+                    "Destinatario": destinatario_csv, 
+                    "Indirizzo": indirizzo_csv, 
+                    "Peso_Lordo": peso_csv, 
+                    "DDT": ddt_csv
+                }
+            except KeyError as e:
+                pass
+
+    return list(spedizioni.values())
+
 # --- SINCRONIZZAZIONE DIRETTA ---
 def invia_dati_a_google(pacchi_finali):
     foglio = connetti_google_sheets()
