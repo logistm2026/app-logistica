@@ -25,7 +25,7 @@ def genera_id(destinatario, ddt):
     dest_pulito = str(destinatario).replace(" ", "").upper()
     ddt_pulito = str(ddt).replace(" ", "").upper()
     return f"{dest_pulito}-{ddt_pulito}"
-"""
+
 def elabora_dati(file_pdf, file_csv):
     spedizioni = {}
 
@@ -54,37 +54,7 @@ def elabora_dati(file_pdf, file_csv):
                             spedizioni[id_univoco] = {"ID_Pacco": id_univoco, "Destinatario": destinatario, "Indirizzo": indirizzo, "Peso_Lordo": peso, "DDT": ddt}
                         except IndexError:
                             pass
-"""
 
-# --- FUNZIONE A RAGGI X PER IL PDF ---
-def elabora_dati(file_pdf, file_csv):
-    if file_pdf is not None:
-        with pdfplumber.open(file_pdf) as pdf:
-            # Legge solo la prima pagina per fare il test
-            testo = pdf.pages[0].extract_text()
-            if not testo:
-                st.error("Il PDF sembra vuoto o è un'immagine non leggibile.")
-                return []
-                
-            righe = testo.split('\n')
-            
-            for i, riga in enumerate(righe):
-                # Cerca l'ID della spedizione
-                if re.search(r'(\d{5}/\d{4}/[A-Z]+)', riga):
-                    st.error("🚨 STOP! Ho trovato il primo pacco. Ecco come il computer vede le righe:")
-                    st.info(f"**ANCORA (Riga 0):** {riga}")
-                    
-                    # Stampa le 8 righe successive per vedere dove finiscono i dati
-                    for j in range(1, 9):
-                        try:
-                            st.write(f"**+ {j} riga:** {righe[i+j].strip()}")
-                        except IndexError:
-                            pass
-                    
-                    st.warning("Fai uno screenshot di questa lista e mandamelo. Poi blocchiamo il codice!")
-                    st.stop() # Ferma l'app all'istante
-                    
-    return []
 
 # --- SINCRONIZZAZIONE DIRETTA ---
 def invia_dati_a_google(pacchi_finali):
