@@ -73,10 +73,10 @@ def elabora_dati(file_pdf, file_csv):
         for index, row in df_csv.iterrows():
             try:
                 # ATTENZIONE: Inserisci qui i nomi ESATTI delle intestazioni del tuo file CSV
-                destinatario_csv = row['NOME_COLONNA_DESTINATARIO_CSV']
-                indirizzo_csv = row['NOME_COLONNA_INDIRIZZO_CSV']
-                peso_csv = row['NOME_COLONNA_PESO_CSV']
-                ddt_csv = row['NOME_COLONNA_DDT_CSV']
+                destinatario_csv = row['RAGIONE SOCIALE DESTINATARIO']
+                indirizzo_csv = row['INDIRIZZO']
+                peso_csv = row['PESO LORDO']
+                ddt_csv = row['DDT']
                 
                 if destinatario_csv == "":
                     continue
