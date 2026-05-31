@@ -55,35 +55,61 @@ def elabora_dati(file_pdf, file_csv):
                         except IndexError:
                             pass
 '''
-# --- FUNZIONE A RAGGI X PER IL PDF ---
+# --- FUNZIONE A COLONNE PER IL PDF ---
 def elabora_dati(file_pdf, file_csv):
+    spedizioni = {}
+
     if file_pdf is not None:
         with pdfplumber.open(file_pdf) as pdf:
-            # Legge solo la prima pagina per fare il test
-            testo = pdf.pages[0].extract_text()
-            if not testo:
-                st.error("Il PDF sembra vuoto o è un'immagine non leggibile.")
-                return []
+            for pagina in pdf.pages:
+                testo = pagina.extract_text()
+                if not testo: continue
                 
-            righe = testo.split('\n')
-            
-            for i, riga in enumerate(righe):
-                # Cerca l'ID della spedizione
-                if re.search(r'(\d{5}/\d{4}/[A-Z]+)', riga):
-                    st.error("🚨 STOP! Ho trovato il primo pacco. Ecco come il computer vede le righe:")
-                    st.info(f"**ANCORA (Riga 0):** {riga}")
-                    
-                    # Stampa le 8 righe successive per vedere dove finiscono i dati
-                    for j in range(1, 9):
+                righe = testo.split('\n')
+                
+                for i, riga in enumerate(righe):
+                    # Troviamo la riga "Ancora" con l'ID (Riga 0)
+                    if re.search(r'(\d{5}/\d{4}/[A-Z]+)', riga):
                         try:
-                            st.write(f"**+ {j} riga:** {righe[i+j].strip()}")
+                            # 1. DIVIDIAMO LA RIGA 0 IN COLONNE (usando gli spazi larghi)
+                            # Esempio: ['43607/2026/SE', 'G.L.S. ENTERPRISE SRL', 'HOTEL/CANTIERE', '1,097 0,1']
+                            colonne_riga0 = re.split(r'\s{2,}', riga.strip())
+                            
+                            # L'ultimo blocco a destra ha i numeri. Lo dividiamo per prendere il peso.
+                            numeri_finali = colonne_riga0[-1].split()
+                            peso = numeri_finali[-2] if len(numeri_finali) > 1 else numeri_finali[0]
+                            
+                            # Il Destinatario è il penultimo blocco (prima dei numeri)
+                            destinatario = colonne_riga0[-2]
+                            
+                            # 2. ESTRAIAMO L'INDIRIZZO DALLA RIGA 1
+                            if i+1 < len(righe):
+                                # Dividiamo anche la Riga 1 in colonne
+                                colonne_riga1 = re.split(r'\s{2,}', righe[i+1].strip())
+                                # L'indirizzo è l'ultimo blocco a destra della Riga 1
+                                indirizzo = colonne_riga1[-1]
+                            else:
+                                indirizzo = "INDIRIZZO NON TROVATO"
+                            
+                            # 3. CERCHIAMO IL DDT
+                            # Continuiamo a cercare il DDT dinamicamente scorrendo le righe sotto
+                            ddt = "DDT NON TROVATO"
+                            for j in range(1, 8):
+                                if i+j < len(righe) and "DDT" in righe[i+j]:
+                                    ddt = righe[i+j].strip()
+                                    break 
+
+                            # Creiamo l'ID e salviamo
+                            id_univoco = genera_id(destinatario, ddt)
+                            spedizioni[id_univoco] = {
+                                "ID_Pacco": id_univoco, 
+                                "Destinatario": destinatario, 
+                                "Indirizzo": indirizzo, 
+                                "Peso_Lordo": peso, 
+                                "DDT": ddt
+                            }
                         except IndexError:
                             pass
-                    
-                    st.warning("Fai uno screenshot di questa lista e mandamelo. Poi blocchiamo il codice!")
-                    st.stop() # Ferma l'app all'istante
-                    
-    return []
 
 # --- SINCRONIZZAZIONE DIRETTA ---
 def invia_dati_a_google(pacchi_finali):
