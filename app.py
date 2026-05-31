@@ -143,7 +143,7 @@ def elabora_dati(file_pdf, file_csv):
         for index, row in df_csv.iterrows():
             try:
                 # REINSERISCI QUI I NOMI ESATTI DELLE TUE COLONNE CSV
-                destinatario_csv = row['RAGIONE SOCIALE DESTINATARIO' + 'LOCALITA' + 'CAP' + 'PROVINCIA']
+                destinatario_csv = row['RAGIONE SOCIALE DESTINATARIO']
                 indirizzo_csv = row['INDIRIZZO']
                 peso_csv = row['PESO LORDO']
                 ddt_csv = row['DDT']
