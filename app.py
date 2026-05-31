@@ -55,51 +55,55 @@ def elabora_dati(file_pdf, file_csv):
                         except IndexError:
                             pass
 '''
-# --- FUNZIONE A COLONNE PER IL PDF ---
+# --- FUNZIONE A COLONNE PER IL PDF (CON LAYOUT ATTIVO) ---
 def elabora_dati(file_pdf, file_csv):
     spedizioni = {}
 
+    # ==========================================
+    # 1. LETTURA PDF
+    # ==========================================
     if file_pdf is not None:
         with pdfplumber.open(file_pdf) as pdf:
             for pagina in pdf.pages:
-                testo = pagina.extract_text()
+                # LA MAGIA È QUI: layout=True mantiene i grandi spazi bianchi tra le colonne!
+                testo = pagina.extract_text(layout=True)
                 if not testo: continue
                 
                 righe = testo.split('\n')
                 
                 for i, riga in enumerate(righe):
-                    # Troviamo la riga "Ancora" con l'ID (Riga 0)
                     if re.search(r'(\d{5}/\d{4}/[A-Z]+)', riga):
                         try:
-                            # 1. DIVIDIAMO LA RIGA 0 IN COLONNE (usando gli spazi larghi)
-                            # Esempio: ['43607/2026/SE', 'G.L.S. ENTERPRISE SRL', 'HOTEL/CANTIERE', '1,097 0,1']
+                            # 1. DIVIDIAMO LA RIGA 0 IN COLONNE
                             colonne_riga0 = re.split(r'\s{2,}', riga.strip())
                             
-                            # L'ultimo blocco a destra ha i numeri. Lo dividiamo per prendere il peso.
-                            numeri_finali = colonne_riga0[-1].split()
+                            # Se il layout è strano e non ci sono blocchi separati, proviamo il piano B
+                            if len(colonne_riga0) < 2:
+                                colonne_riga0 = riga.split()
+                                destinatario = colonne_riga0[1] # Tenta di prendere la prima parola dopo l'ID
+                                numeri_finali = [colonne_riga0[-1]]
+                            else:
+                                destinatario = colonne_riga0[-2]
+                                numeri_finali = colonne_riga0[-1].split()
+                                
                             peso = numeri_finali[-2] if len(numeri_finali) > 1 else numeri_finali[0]
-                            
-                            # Il Destinatario è il penultimo blocco (prima dei numeri)
-                            destinatario = colonne_riga0[-2]
                             
                             # 2. ESTRAIAMO L'INDIRIZZO DALLA RIGA 1
                             if i+1 < len(righe):
-                                # Dividiamo anche la Riga 1 in colonne
                                 colonne_riga1 = re.split(r'\s{2,}', righe[i+1].strip())
-                                # L'indirizzo è l'ultimo blocco a destra della Riga 1
                                 indirizzo = colonne_riga1[-1]
                             else:
                                 indirizzo = "INDIRIZZO NON TROVATO"
                             
                             # 3. CERCHIAMO IL DDT
-                            # Continuiamo a cercare il DDT dinamicamente scorrendo le righe sotto
                             ddt = "DDT NON TROVATO"
                             for j in range(1, 8):
                                 if i+j < len(righe) and "DDT" in righe[i+j]:
-                                    ddt = righe[i+j].strip()
+                                    # Essendo a colonne, puliamo la riga del DDT prendendo la parte destra
+                                    pezzi_ddt = re.split(r'\s{2,}', righe[i+j].strip())
+                                    ddt = pezzi_ddt[-1]
                                     break 
 
-                            # Creiamo l'ID e salviamo
                             id_univoco = genera_id(destinatario, ddt)
                             spedizioni[id_univoco] = {
                                 "ID_Pacco": id_univoco, 
@@ -108,7 +112,8 @@ def elabora_dati(file_pdf, file_csv):
                                 "Peso_Lordo": peso, 
                                 "DDT": ddt
                             }
-                        except IndexError:
+                        except Exception as e:
+                            # Ignora la singola riga rotta ma continua con gli altri pacchi
                             pass
 
     # ==========================================
