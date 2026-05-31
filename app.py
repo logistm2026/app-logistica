@@ -55,7 +55,7 @@ def elabora_dati(file_pdf, file_csv):
                         except IndexError:
                             pass
 '''
-# --- FUNZIONE A COLONNE PER IL PDF (CON LAYOUT ATTIVO) ---
+# --- FUNZIONE A COLONNE PER IL PDF (VERSIONE BLINDATA) ---
 def elabora_dati(file_pdf, file_csv):
     spedizioni = {}
 
@@ -65,7 +65,6 @@ def elabora_dati(file_pdf, file_csv):
     if file_pdf is not None:
         with pdfplumber.open(file_pdf) as pdf:
             for pagina in pdf.pages:
-                # LA MAGIA È QUI: layout=True mantiene i grandi spazi bianchi tra le colonne!
                 testo = pagina.extract_text(layout=True)
                 if not testo: continue
                 
@@ -74,35 +73,48 @@ def elabora_dati(file_pdf, file_csv):
                 for i, riga in enumerate(righe):
                     if re.search(r'(\d{5}/\d{4}/[A-Z]+)', riga):
                         try:
-                            # 1. DIVIDIAMO LA RIGA 0 IN COLONNE
-                            colonne_riga0 = re.split(r'\s{2,}', riga.strip())
+                            # 1. DESTINATARIO E PESO (Dalla Riga 0)
+                            pezzi_riga0 = [p.strip() for p in re.split(r'\s{2,}', riga.strip()) if p.strip()]
                             
-                            # Se il layout è strano e non ci sono blocchi separati, proviamo il piano B
-                            if len(colonne_riga0) < 2:
-                                colonne_riga0 = riga.split()
-                                destinatario = colonne_riga0[1] # Tenta di prendere la prima parola dopo l'ID
-                                numeri_finali = [colonne_riga0[-1]]
+                            if len(pezzi_riga0) >= 3:
+                                destinatario = pezzi_riga0[-2]
+                                numeri = pezzi_riga0[-1].split()
+                                # Prende il 2° numero (salta i Colli e becca il Peso)
+                                peso = numeri[1] if len(numeri) > 1 else numeri[0]
                             else:
-                                destinatario = colonne_riga0[-2]
-                                numeri_finali = colonne_riga0[-1].split()
-                                
-                            peso = numeri_finali[-2] if len(numeri_finali) > 1 else numeri_finali[0]
+                                destinatario = "ERRORE NOME"
+                                peso = "0"
                             
-                            # 2. ESTRAIAMO L'INDIRIZZO DALLA RIGA 1
+                            # 2. INDIRIZZO (Via da Riga 1 + CAP/Città da Riga 2)
+                            via = ""
+                            citta = ""
+                            
                             if i+1 < len(righe):
-                                colonne_riga1 = re.split(r'\s{2,}', righe[i+1].strip())
-                                indirizzo = colonne_riga1[-1]
-                            else:
-                                indirizzo = "INDIRIZZO NON TROVATO"
+                                pezzi_riga1 = [p.strip() for p in re.split(r'\s{2,}', righe[i+1].strip()) if p.strip()]
+                                via = pezzi_riga1[-1] if pezzi_riga1 else ""
+                                
+                            if i+2 < len(righe):
+                                pezzi_riga2 = [p.strip() for p in re.split(r'\s{2,}', righe[i+2].strip()) if p.strip()]
+                                # Cerca a ritroso un pezzo di testo che contenga il CAP di 5 cifre
+                                for p in reversed(pezzi_riga2):
+                                    if re.search(r'\d{5}', p): 
+                                        citta = p
+                                        break
+                                if not citta and len(pezzi_riga2) >= 2:
+                                    citta = pezzi_riga2[-2] if "Imballi" in pezzi_riga2[-1] else pezzi_riga2[-1]
                             
-                            # 3. CERCHIAMO IL DDT
-                            ddt = "DDT NON TROVATO"
-                            for j in range(1, 8):
-                                if i+j < len(righe) and "DDT" in righe[i+j]:
-                                    # Essendo a colonne, puliamo la riga del DDT prendendo la parte destra
-                                    pezzi_ddt = re.split(r'\s{2,}', righe[i+j].strip())
-                                    ddt = pezzi_ddt[-1]
-                                    break 
+                            # Unisce Via e Città ed elimina la parola "Imballi/Packages :" se rimasta attaccata
+                            indirizzo = f"{via} {citta}".replace("Imballi/Packages :", "").replace("Imballi/Packages:", "").strip()
+                            
+                            # 3. DDT (Cerca la parola "Note" nelle righe successive)
+                            ddt = "NON TROVATO"
+                            for j in range(1, 6):
+                                if i+j < len(righe):
+                                    riga_check = righe[i+j].strip()
+                                    if "Note" in riga_check:
+                                        # Elimina "Note :" e prende tutta la stringa successiva
+                                        ddt = re.sub(r'.*Note\s*[:\s]*', '', riga_check).strip()
+                                        break 
 
                             id_univoco = genera_id(destinatario, ddt)
                             spedizioni[id_univoco] = {
@@ -113,8 +125,15 @@ def elabora_dati(file_pdf, file_csv):
                                 "DDT": ddt
                             }
                         except Exception as e:
-                            # Ignora la singola riga rotta ma continua con gli altri pacchi
-                            pass
+                            # NIENTE PIÙ SCARTI SILENZIOSI: scrive l'errore sul Foglio Google!
+                            id_emergenza = f"ERRORE-PDF-{i}"
+                            spedizioni[id_emergenza] = {
+                                "ID_Pacco": id_emergenza, 
+                                "Destinatario": "ERRORE LETTURA RIGA", 
+                                "Indirizzo": str(e), 
+                                "Peso_Lordo": "0", 
+                                "DDT": "ERRORE"
+                            }
 
     # ==========================================
     # LETTURA CSV (Invariata)
