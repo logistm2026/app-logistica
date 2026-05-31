@@ -55,7 +55,7 @@ def elabora_dati(file_pdf, file_csv):
                         except IndexError:
                             pass
 '''
-# --- FUNZIONE A COLONNE PER IL PDF (VERSIONE BLINDATA) ---
+# --- FUNZIONE CHIRURGICA PER IL PDF ---
 def elabora_dati(file_pdf, file_csv):
     spedizioni = {}
 
@@ -73,46 +73,59 @@ def elabora_dati(file_pdf, file_csv):
                 for i, riga in enumerate(righe):
                     if re.search(r'(\d{5}/\d{4}/[A-Z]+)', riga):
                         try:
-                            # 1. DESTINATARIO E PESO (Dalla Riga 0)
-                            pezzi_riga0 = [p.strip() for p in re.split(r'\s{2,}', riga.strip()) if p.strip()]
+                            # 1. DESTINATARIO
+                            pezzi_riga0 = re.split(r'\s{2,}', riga.strip())
+                            destinatario = "ERRORE NOME"
                             
-                            if len(pezzi_riga0) >= 3:
-                                destinatario = pezzi_riga0[-2]
-                                numeri = pezzi_riga0[-1].split()
-                                # Prende il 2° numero (salta i Colli e becca il Peso)
-                                peso = numeri[1] if len(numeri) > 1 else numeri[0]
-                            else:
-                                destinatario = "ERRORE NOME"
-                                peso = "0"
-                            
-                            # 2. INDIRIZZO (Via da Riga 1 + CAP/Città da Riga 2)
+                            for idx, pezzo in enumerate(pezzi_riga0):
+                                # Trova dove iniziano i numeri alla fine (es. "2 1.097,00..." o semplicemente "2")
+                                if re.match(r'^\d+\s+\d{1,3}(?:\.\d{3})*,\d+', pezzo) or re.match(r'^\d+$', pezzo):
+                                    if idx > 0:
+                                        destinatario = pezzi_riga0[idx-1].strip() # Prende il nome attaccato prima dei numeri
+                                    break
+                                    
+                            if destinatario == "ERRORE NOME" and len(pezzi_riga0) >= 3:
+                                destinatario = pezzi_riga0[-2].strip()
+
+                            # 2. PESO LORDO
+                            parole_riga = riga.split()
+                            peso = "0"
+                            if len(parole_riga) >= 6:
+                                # Il peso è posizionato sistematicamente come 5a o 6a parola partendo dal fondo
+                                if re.match(r'^\d{1,3}(?:\.\d{3})*,\d+$|^\d+,\d+$', parole_riga[-5]):
+                                    peso = parole_riga[-5]
+                                elif re.match(r'^\d{1,3}(?:\.\d{3})*,\d+$|^\d+,\d+$', parole_riga[-6]):
+                                    peso = parole_riga[-6]
+                                    
+                            if peso == "0":
+                                # Sistema di emergenza: estrae il primo numero con la virgola che trova
+                                tutti_i_decimali = re.findall(r'\b\d{1,3}(?:\.\d{3})*,\d{2,4}\b', riga)
+                                if tutti_i_decimali:
+                                    peso = tutti_i_decimali[0]
+
+                            # 3. INDIRIZZO PULITO (Via + CAP/Città)
                             via = ""
-                            citta = ""
-                            
                             if i+1 < len(righe):
-                                pezzi_riga1 = [p.strip() for p in re.split(r'\s{2,}', righe[i+1].strip()) if p.strip()]
-                                via = pezzi_riga1[-1] if pezzi_riga1 else ""
+                                pezzi_riga1 = re.split(r'\s{2,}', righe[i+1].strip())
+                                via = pezzi_riga1[-1].strip() if pezzi_riga1 else ""
                                 
-                            if i+2 < len(righe):
-                                pezzi_riga2 = [p.strip() for p in re.split(r'\s{2,}', righe[i+2].strip()) if p.strip()]
-                                # Cerca a ritroso un pezzo di testo che contenga il CAP di 5 cifre
-                                for p in reversed(pezzi_riga2):
-                                    if re.search(r'\d{5}', p): 
-                                        citta = p
+                            citta = ""
+                            for j in range(1, 4):
+                                if i+j < len(righe):
+                                    # Ricerca laser: estrae SOLO la sequenza CAP + CITTÀ + PROVINCIA (ignorando Corrispondente e Imballi)
+                                    matches_citta = re.findall(r'\d{5}\s+[A-Za-z\s\']+[A-Z]{2}(?:\s*IT)?', righe[i+j])
+                                    if matches_citta:
+                                        citta = matches_citta[-1].strip() # Seleziona l'ultimo blocco a destra (il destinatario)
                                         break
-                                if not citta and len(pezzi_riga2) >= 2:
-                                    citta = pezzi_riga2[-2] if "Imballi" in pezzi_riga2[-1] else pezzi_riga2[-1]
-                            
-                            # Unisce Via e Città ed elimina la parola "Imballi/Packages :" se rimasta attaccata
-                            indirizzo = f"{via} {citta}".replace("Imballi/Packages :", "").replace("Imballi/Packages:", "").strip()
-                            
-                            # 3. DDT (Cerca la parola "Note" nelle righe successive)
+                                        
+                            indirizzo = f"{via} {citta}".strip()
+
+                            # 4. DDT (INVARIATO)
                             ddt = "NON TROVATO"
                             for j in range(1, 6):
                                 if i+j < len(righe):
                                     riga_check = righe[i+j].strip()
                                     if "Note" in riga_check:
-                                        # Elimina "Note :" e prende tutta la stringa successiva
                                         ddt = re.sub(r'.*Note\s*[:\s]*', '', riga_check).strip()
                                         break 
 
@@ -125,11 +138,11 @@ def elabora_dati(file_pdf, file_csv):
                                 "DDT": ddt
                             }
                         except Exception as e:
-                            # NIENTE PIÙ SCARTI SILENZIOSI: scrive l'errore sul Foglio Google!
+                            # Se una singola riga è illeggibile, la salva evidenziando l'errore senza scartarla nel nulla
                             id_emergenza = f"ERRORE-PDF-{i}"
                             spedizioni[id_emergenza] = {
                                 "ID_Pacco": id_emergenza, 
-                                "Destinatario": "ERRORE LETTURA RIGA", 
+                                "Destinatario": "ERRORE LETTURA", 
                                 "Indirizzo": str(e), 
                                 "Peso_Lordo": "0", 
                                 "DDT": "ERRORE"
