@@ -77,36 +77,49 @@ def invia_dati_a_google(pacchi_finali):
     foglio = connetti_google_sheets()
     if foglio is None: return False
 
-    st.write("Connesso al database. Analisi dei dati in corso...")
+    st.write("Connesso al database. Sincronizzazione in blocco in corso...")
     
-    # Leggiamo tutto il foglio per capire quali pacchi esistono già
     tutti_i_dati = foglio.get_all_records()
-    intestazioni = foglio.row_values(1) # Prende i nomi esatti delle tue colonne in riga 1
+    intestazioni = foglio.row_values(1) 
     
-    # Creiamo una mappa per trovare subito le righe da aggiornare
-    # L'indice parte da 0, +2 perché Excel parte da riga 1 (che è l'intestazione)
     mappa_righe = {str(riga.get("ID_Pacco", "")): idx + 2 for idx, riga in enumerate(tutti_i_dati)}
     
-    successi = 0
+    da_aggiornare = []
+    da_inserire = []
+    
+    # Smistiamo i pacchi: quali sono da aggiornare e quali nuovi?
     for pacco in pacchi_finali:
         id_pacco = pacco["ID_Pacco"]
-        
-        # Allineiamo i nostri dati sotto le colonne corrette di Google Fogli
         nuova_riga = []
         for colonna in intestazioni:
             nuova_riga.append(pacco.get(colonna, ""))
             
         if id_pacco in mappa_righe:
-            # Sovrascrive i dati esistenti senza toccare le note o lo stato del corriere
-            riga_da_aggiornare = mappa_righe[id_pacco]
-            foglio.update(f"A{riga_da_aggiornare}:E{riga_da_aggiornare}", [nuova_riga[:5]])
+            riga_num = mappa_righe[id_pacco]
+            da_aggiornare.append({
+                'range': f'A{riga_num}:E{riga_num}',
+                'values': [nuova_riga[:5]]
+            })
         else:
-            # Aggiunge in fondo al file
-            foglio.append_row(nuova_riga)
+            da_inserire.append(nuova_riga)
             
-        successi += 1
-        
-    return successi
+    successi = 0
+    
+    # ESECUZIONE BATCH (Anti-blocco e copia formattazione)
+    try:
+        if da_aggiornare:
+            foglio.batch_update(da_aggiornare, value_input_option="USER_ENTERED")
+            successi += len(da_aggiornare)
+            
+        if da_inserire:
+            # Il parametro INSERT_ROWS fa la magia: spinge giù le righe copiando bordi e colori
+            foglio.append_rows(da_inserire, value_input_option="USER_ENTERED", insert_data_option="INSERT_ROWS")
+            successi += len(da_inserire)
+            
+        return successi
+    except Exception as e:
+        st.error(f"Errore Tecnico con Google Fogli: {e}")
+        return successi
 
 # --- INTERFACCIA UTENTE ---
 st.set_page_config(page_title="Hub Logistica", page_icon="📦")
