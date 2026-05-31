@@ -26,7 +26,7 @@ def genera_id(destinatario, ddt):
     ddt_pulito = str(ddt).replace(" ", "").upper()
     return f"{dest_pulito}-{ddt_pulito}"
 
-# --- FUNZIONE CHIRURGICA PER IL PDF (DEFINITIVA) ---
+# --- FUNZIONE CHIRURGICA PER IL PDF E CSV (FILTRO DDT NUMERICO) ---
 def elabora_dati(file_pdf, file_csv):
     spedizioni = {}
 
@@ -62,18 +62,14 @@ def elabora_dati(file_pdf, file_csv):
                                     match = re.search(r'([A-Za-z0-9\s\.\&\-\'/]+?)\s+\d+\s+\d{1,3}(?:\.\d{3})*,\d+', riga)
                                     if match:
                                         testo_grezzo = match.group(1).strip()
-                                        # Elimina le sigle di spedizione iniziali (DAP, PF)
                                         testo_grezzo = re.sub(r'^\s*(?:DAP|PF)\b', '', testo_grezzo, flags=re.IGNORECASE).strip()
                                         
-                                        # Taglia la frase usando le sigle aziendali
                                         split_societa = re.split(r'(?i)\b(?:SRL|S\.R\.L\.|SPA|S\.P\.A\.|SNC|S\.N\.C\.)\b', testo_grezzo)
                                         pezzi_validi = [p.strip() for p in split_societa if p.strip()]
                                         
                                         if len(pezzi_validi) >= 2:
-                                            # Prende il blocco di testo DOPO la sigla del mittente
                                             destinatario = pezzi_validi[-1]
                                         elif len(pezzi_validi) == 1:
-                                            # Ripiego di sicurezza se non ci sono sigle
                                             parole = pezzi_validi[0].split()
                                             destinatario = " ".join(parole[-3:])
 
@@ -110,14 +106,17 @@ def elabora_dati(file_pdf, file_csv):
                                         
                             indirizzo = f"{via} {citta}".strip()
 
-                            # 4. DDT
-                            ddt = "NON TROVATO"
+                            # 4. DDT (Solo Numeri)
+                            ddt_grezzo = ""
                             for j in range(1, 6):
                                 if i+j < len(righe):
                                     riga_check = righe[i+j].strip()
                                     if "Note" in riga_check:
-                                        ddt = re.sub(r'.*Note\s*[:\s]*', '', riga_check).strip()
+                                        ddt_grezzo = re.sub(r'.*Note\s*[:\s]*', '', riga_check).strip()
                                         break 
+                            
+                            # Applica il filtro: mantiene solo se formato interamente da cifre numeriche
+                            ddt = ddt_grezzo if ddt_grezzo.isdigit() else ""
 
                             id_univoco = genera_id(destinatario, ddt)
                             spedizioni[id_univoco] = {
@@ -134,7 +133,7 @@ def elabora_dati(file_pdf, file_csv):
                                 "Destinatario": "ERRORE LETTURA", 
                                 "Indirizzo": str(e), 
                                 "Peso_Lordo": "0", 
-                                "DDT": "ERRORE"
+                                "DDT": ""
                             }
     # ==========================================
     # LETTURA CSV (Invariata)
