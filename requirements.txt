@@ -2,3 +2,5 @@ streamlit
 pdfplumber
 pandas
 requests
+gspread
+oauth2client
