@@ -21,10 +21,16 @@ def connetti_google_sheets():
         st.error(f"Errore di connessione a Google Fogli: {e}")
         return None
 
+import hashlib
+
 def genera_id(destinatario, ddt):
-    dest_pulito = str(destinatario).replace(" ", "").upper()
-    ddt_pulito = str(ddt).replace(" ", "").upper()
-    return f"{dest_pulito}-{ddt_pulito}"
+    # Creiamo una stringa univoca composta dai dati principali
+    stringa_base = f"{destinatario.upper()}-{ddt.upper()}"
+    
+    # Generiamo un hash breve (prendiamo i primi 8 caratteri)
+    codice_univoco = hashlib.md5(stringa_base.encode()).hexdigest()[:8].upper()
+    
+    return codice_univoco
 
 # --- FUNZIONE CHIRURGICA PER IL PDF E CSV (FILTRO DDT NUMERICO + INDIRIZZO COMPLETO) ---
 def elabora_dati(file_pdf, file_csv):
