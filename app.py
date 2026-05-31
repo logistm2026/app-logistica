@@ -25,37 +25,8 @@ def genera_id(destinatario, ddt):
     dest_pulito = str(destinatario).replace(" ", "").upper()
     ddt_pulito = str(ddt).replace(" ", "").upper()
     return f"{dest_pulito}-{ddt_pulito}"
-'''
-def elabora_dati(file_pdf, file_csv):
-    spedizioni = {}
 
-    if file_pdf is not None:
-        with pdfplumber.open(file_pdf) as pdf:
-            for pagina in pdf.pages:
-                testo = pagina.extract_text()
-                if not testo: continue
-                righe = testo.split('\n')
-                
-                for i, riga in enumerate(righe):
-                    if re.search(r'(\d{5}/\d{4}/[A-Z]+)', riga):
-                        try:
-                            destinatario = righe[i+1].strip()
-                            indirizzo = righe[i+2].strip()
-                            if "FEDRIGONI" in destinatario or "Corrispondente" in destinatario:
-                                destinatario = righe[i+2].strip()
-                                indirizzo = righe[i+3].strip()
-                                peso = righe[i+4].strip() 
-                                ddt = righe[i+5].strip()  
-                            else:
-                                peso = righe[i+3].strip() 
-                                ddt = righe[i+4].strip()  
-
-                            id_univoco = genera_id(destinatario, ddt)
-                            spedizioni[id_univoco] = {"ID_Pacco": id_univoco, "Destinatario": destinatario, "Indirizzo": indirizzo, "Peso_Lordo": peso, "DDT": ddt}
-                        except IndexError:
-                            pass
-'''
-# --- FUNZIONE CHIRURGICA PER IL PDF ---
+# --- FUNZIONE CHIRURGICA PER IL PDF (ANTI-MITTENTE) ---
 def elabora_dati(file_pdf, file_csv):
     spedizioni = {}
 
@@ -78,44 +49,54 @@ def elabora_dati(file_pdf, file_csv):
                             destinatario = "ERRORE NOME"
                             
                             for idx, pezzo in enumerate(pezzi_riga0):
-                                # Trova dove iniziano i numeri alla fine (es. "2 1.097,00..." o semplicemente "2")
                                 if re.match(r'^\d+\s+\d{1,3}(?:\.\d{3})*,\d+', pezzo) or re.match(r'^\d+$', pezzo):
                                     if idx > 0:
-                                        destinatario = pezzi_riga0[idx-1].strip() # Prende il nome attaccato prima dei numeri
+                                        destinatario = pezzi_riga0[idx-1].strip() 
                                     break
                                     
-                            if destinatario == "ERRORE NOME" and len(pezzi_riga0) >= 3:
-                                destinatario = pezzi_riga0[-2].strip()
+                            if destinatario == "ERRORE NOME":
+                                if len(pezzi_riga0) >= 3:
+                                    destinatario = pezzi_riga0[-2].strip()
+                                else:
+                                    # Salvagente Riga 13: Se le parole sono incollate, estrae le parole prima dei numeri
+                                    match = re.search(r'([A-Za-z0-9\s\.\&\-\'/]+?)\s+\d+\s+\d{1,3}(?:\.\d{3})*,\d+', riga)
+                                    if match:
+                                        parole = match.group(1).split()
+                                        # Esclude tag del mittente e prende le ultime parole
+                                        pulito = [p for p in parole if p.upper() not in ["DAP", "PF", "SPA", "SRL"]]
+                                        destinatario = " ".join(pulito[-4:])
 
                             # 2. PESO LORDO
                             parole_riga = riga.split()
                             peso = "0"
                             if len(parole_riga) >= 6:
-                                # Il peso è posizionato sistematicamente come 5a o 6a parola partendo dal fondo
                                 if re.match(r'^\d{1,3}(?:\.\d{3})*,\d+$|^\d+,\d+$', parole_riga[-5]):
                                     peso = parole_riga[-5]
                                 elif re.match(r'^\d{1,3}(?:\.\d{3})*,\d+$|^\d+,\d+$', parole_riga[-6]):
                                     peso = parole_riga[-6]
                                     
                             if peso == "0":
-                                # Sistema di emergenza: estrae il primo numero con la virgola che trova
                                 tutti_i_decimali = re.findall(r'\b\d{1,3}(?:\.\d{3})*,\d{2,4}\b', riga)
                                 if tutti_i_decimali:
                                     peso = tutti_i_decimali[0]
 
-                            # 3. INDIRIZZO PULITO (Via + CAP/Città)
+                            # 3. INDIRIZZO PULITO (Anti-Mittente)
                             via = ""
                             if i+1 < len(righe):
                                 pezzi_riga1 = re.split(r'\s{2,}', righe[i+1].strip())
-                                via = pezzi_riga1[-1].strip() if pezzi_riga1 else ""
+                                via_grezza = pezzi_riga1[-1].strip() if pezzi_riga1 else ""
+                                
+                                # TAGLIO INTELLIGENTE: Separa i due indirizzi se incollati
+                                # Cerca l'ultima occorrenza di VIA, VIALE, PIAZZA ecc. preceduta da spazio
+                                split_via = re.split(r'(?i)\s+(?=VIA\b|VIALE\b|V\.LE\b|PIAZZA\b|P\.ZZA\b|P\.LE\b|STRADA\b|CORSO\b|C\.SO\b|LOC\.\b|Z\.I\.\b)', via_grezza)
+                                via = split_via[-1].strip() if split_via else via_grezza
                                 
                             citta = ""
                             for j in range(1, 4):
                                 if i+j < len(righe):
-                                    # Ricerca laser: estrae SOLO la sequenza CAP + CITTÀ + PROVINCIA (ignorando Corrispondente e Imballi)
                                     matches_citta = re.findall(r'\d{5}\s+[A-Za-z\s\']+[A-Z]{2}(?:\s*IT)?', righe[i+j])
                                     if matches_citta:
-                                        citta = matches_citta[-1].strip() # Seleziona l'ultimo blocco a destra (il destinatario)
+                                        citta = matches_citta[-1].strip()
                                         break
                                         
                             indirizzo = f"{via} {citta}".strip()
@@ -138,7 +119,6 @@ def elabora_dati(file_pdf, file_csv):
                                 "DDT": ddt
                             }
                         except Exception as e:
-                            # Se una singola riga è illeggibile, la salva evidenziando l'errore senza scartarla nel nulla
                             id_emergenza = f"ERRORE-PDF-{i}"
                             spedizioni[id_emergenza] = {
                                 "ID_Pacco": id_emergenza, 
