@@ -26,7 +26,7 @@ def genera_id(destinatario, ddt):
     ddt_pulito = str(ddt).replace(" ", "").upper()
     return f"{dest_pulito}-{ddt_pulito}"
 
-# --- FUNZIONE CHIRURGICA PER IL PDF (ANTI-MITTENTE) ---
+# --- FUNZIONE CHIRURGICA PER IL PDF (DEFINITIVA) ---
 def elabora_dati(file_pdf, file_csv):
     spedizioni = {}
 
@@ -58,13 +58,24 @@ def elabora_dati(file_pdf, file_csv):
                                 if len(pezzi_riga0) >= 3:
                                     destinatario = pezzi_riga0[-2].strip()
                                 else:
-                                    # Salvagente Riga 13: Se le parole sono incollate, estrae le parole prima dei numeri
+                                    # Salvagente Intelligente: Separa al primo SRL/SPA del mittente
                                     match = re.search(r'([A-Za-z0-9\s\.\&\-\'/]+?)\s+\d+\s+\d{1,3}(?:\.\d{3})*,\d+', riga)
                                     if match:
-                                        parole = match.group(1).split()
-                                        # Esclude tag del mittente e prende le ultime parole
-                                        pulito = [p for p in parole if p.upper() not in ["DAP", "PF", "SPA", "SRL"]]
-                                        destinatario = " ".join(pulito[-4:])
+                                        testo_grezzo = match.group(1).strip()
+                                        # Elimina le sigle di spedizione iniziali (DAP, PF)
+                                        testo_grezzo = re.sub(r'^\s*(?:DAP|PF)\b', '', testo_grezzo, flags=re.IGNORECASE).strip()
+                                        
+                                        # Taglia la frase usando le sigle aziendali
+                                        split_societa = re.split(r'(?i)\b(?:SRL|S\.R\.L\.|SPA|S\.P\.A\.|SNC|S\.N\.C\.)\b', testo_grezzo)
+                                        pezzi_validi = [p.strip() for p in split_societa if p.strip()]
+                                        
+                                        if len(pezzi_validi) >= 2:
+                                            # Prende il blocco di testo DOPO la sigla del mittente
+                                            destinatario = pezzi_validi[-1]
+                                        elif len(pezzi_validi) == 1:
+                                            # Ripiego di sicurezza se non ci sono sigle
+                                            parole = pezzi_validi[0].split()
+                                            destinatario = " ".join(parole[-3:])
 
                             # 2. PESO LORDO
                             parole_riga = riga.split()
@@ -86,8 +97,6 @@ def elabora_dati(file_pdf, file_csv):
                                 pezzi_riga1 = re.split(r'\s{2,}', righe[i+1].strip())
                                 via_grezza = pezzi_riga1[-1].strip() if pezzi_riga1 else ""
                                 
-                                # TAGLIO INTELLIGENTE: Separa i due indirizzi se incollati
-                                # Cerca l'ultima occorrenza di VIA, VIALE, PIAZZA ecc. preceduta da spazio
                                 split_via = re.split(r'(?i)\s+(?=VIA\b|VIALE\b|V\.LE\b|PIAZZA\b|P\.ZZA\b|P\.LE\b|STRADA\b|CORSO\b|C\.SO\b|LOC\.\b|Z\.I\.\b)', via_grezza)
                                 via = split_via[-1].strip() if split_via else via_grezza
                                 
@@ -101,7 +110,7 @@ def elabora_dati(file_pdf, file_csv):
                                         
                             indirizzo = f"{via} {citta}".strip()
 
-                            # 4. DDT (INVARIATO)
+                            # 4. DDT
                             ddt = "NON TROVATO"
                             for j in range(1, 6):
                                 if i+j < len(righe):
@@ -127,7 +136,6 @@ def elabora_dati(file_pdf, file_csv):
                                 "Peso_Lordo": "0", 
                                 "DDT": "ERRORE"
                             }
-
     # ==========================================
     # LETTURA CSV (Invariata)
     # ==========================================
