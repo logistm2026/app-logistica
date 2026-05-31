@@ -15,7 +15,7 @@ def connetti_google_sheets():
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
         client = gspread.authorize(creds)
         # INSERISCI QUI IL NOME ESATTO DEL TUO FILE GOOGLE E DEL FOGLIO
-        foglio = client.open("Spedizioni").worksheet("Spedizioni") 
+        foglio = client.open("Logistica Tracking").worksheet("Spedizioni") 
         return foglio
     except Exception as e:
         st.error(f"Errore di connessione a Google Fogli: {e}")
