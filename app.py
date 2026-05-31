@@ -26,7 +26,7 @@ def genera_id(destinatario, ddt):
     ddt_pulito = str(ddt).replace(" ", "").upper()
     return f"{dest_pulito}-{ddt_pulito}"
 
-# --- FUNZIONE CHIRURGICA PER IL PDF E CSV (FILTRO DDT NUMERICO) ---
+# --- FUNZIONE CHIRURGICA PER IL PDF E CSV (FILTRO DDT NUMERICO + INDIRIZZO COMPLETO) ---
 def elabora_dati(file_pdf, file_csv):
     spedizioni = {}
 
@@ -135,20 +135,37 @@ def elabora_dati(file_pdf, file_csv):
                                 "Peso_Lordo": "0", 
                                 "DDT": ""
                             }
+
     # ==========================================
-    # LETTURA CSV (Invariata)
+    # 2. LETTURA CSV
     # ==========================================
     if file_csv is not None:
         df_csv = pd.read_csv(file_csv, sep=';', dtype=str).fillna("")
         for index, row in df_csv.iterrows():
             try:
-                # REINSERISCI QUI I NOMI ESATTI DELLE TUE COLONNE CSV
-                destinatario_csv = row['RAGIONE SOCIALE DESTINATARIO']
-                indirizzo_csv = row['INDIRIZZO']
-                peso_csv = row['PESO LORDO']
-                ddt_csv = row['DDT']
+                destinatario_csv = str(row['RAGIONE SOCIALE DESTINATARIO']).strip()
+                
+                # --- COSTRUZIONE INDIRIZZO COMPLETO ---
+                via_csv = str(row['INDIRIZZO']).strip()
+                cap_grezzo = str(row['CAP']).strip()
+                localita_csv = str(row['LOCALITA']).strip()
+                provincia_csv = str(row['PROVINCIA']).strip()
+                
+                # Applica gli zeri a sinistra fino ad arrivare a 5 cifre (solo se il CAP non è vuoto)
+                cap_csv = cap_grezzo.zfill(5) if cap_grezzo else ""
+                
+                # Fonde le quattro parti e rimuove gli spazi doppi se manca qualche campo
+                indirizzo_csv = f"{via_csv} {cap_csv} {localita_csv} {provincia_csv}".strip()
+                indirizzo_csv = " ".join(indirizzo_csv.split())
+                # --------------------------------------
+                
+                peso_csv = str(row['PESO LORDO']).strip()
+                ddt_csv_grezzo = str(row['DDT']).strip()
                 
                 if destinatario_csv == "": continue
+                
+                # Applica lo stesso filtro numerico anche per il CSV
+                ddt_csv = ddt_csv_grezzo if ddt_csv_grezzo.isdigit() else ""
                 
                 id_univoco_csv = genera_id(destinatario_csv, ddt_csv)
                 spedizioni[id_univoco_csv] = {
