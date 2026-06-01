@@ -27,7 +27,7 @@ def genera_id(destinatario, ddt):
     codice_univoco = hashlib.md5(stringa_base.encode()).hexdigest()[:8].upper()
     return codice_univoco
 
-# --- FUNZIONE CHIRURGICA DEFINITIVA ---
+# --- FUNZIONE CHIRURGICA DEFINITIVA (CON CESOIA ANTI-MITTENTE) ---
 def elabora_dati(file_pdf, file_csv):
     spedizioni = {}
 
@@ -85,30 +85,32 @@ def elabora_dati(file_pdf, file_csv):
                                 if tutti_i_decimali:
                                     peso = tutti_i_decimali[0]
 
-                            # 3. INDIRIZZO PULITO (Anti-Spazzatura + Calamita + Vaticano)
-                            # Uniamo le successive righe per cercare l'indirizzo
+                            # 3. INDIRIZZO PULITO (Calamita + Cesoia Anti-Mittente)
                             blocco_testo = " ".join([righe[i+j].strip() for j in range(1, 5) if i+j < len(righe)])
                             
-                            # Fase 1: Lavaggio (Rimuove telefoni, P.IVA e scritte inutili)
                             blocco_pulito = re.sub(r'\b\d{9,10}\b', '', blocco_testo)
                             blocco_pulito = re.sub(r'(?i)\b(TEL|CELL|TELEFONO|P\.IVA|PIVA|C\.F\.)\b', '', blocco_pulito)
                             
                             indirizzo = "INDIRIZZO NON TROVATO"
                             blocco_upper = blocco_pulito.upper()
                             
-                            # Fase 2: Calamita
                             if "VATICANO" in blocco_upper or "VATICANA" in blocco_upper:
-                                # Eccezione Vaticano
                                 match_vat = re.search(r'(?i)([A-Za-z0-9\s]+?CITT[AÀ\']\s+DEL\s+VATICANO\s*(?:VA)?)', blocco_pulito)
                                 if match_vat:
                                     indirizzo_grezzo = match_vat.group(1).strip()
-                                    # Pulisce eventuali residui del mittente prima del nome vero e proprio
                                     indirizzo = re.sub(r'(?i)^(SPED|DEST|CORRISPONDENTE|IMBALLI).*?\s+', '', indirizzo_grezzo).strip()
                             else:
-                                # Regola Standard per l'Italia
-                                match_standard = re.search(r'(?i)(?:VIA|VIALE|V\.LE|PIAZZA|P\.ZZA|P\.LE|STRADA|CORSO|C\.SO|LOC\.|Z\.I\.)\s+[A-Za-z0-9\s\.\,\-\'/]+?\d{5}\s+[A-Za-z\s\']+[A-Z]{2}', blocco_pulito)
+                                # Magnete Standard
+                                match_standard = re.search(r'(?i)(?:VIA|VIALE|V\.LE|PIAZZA|P\.ZZA|P\.LE|STRADA|CORSO|C\.SO|LOC\.|Z\.I\.)\s+[A-Za-z0-9\s\.\,\-\'/]+?\d{5}\s+[A-Za-z\s\']+[A-Z]{2}(?:\s*IT)?', blocco_pulito)
                                 if match_standard:
-                                    indirizzo = match_standard.group(0).strip()
+                                    indirizzo_sporco = match_standard.group(0).strip()
+                                    
+                                    # LA MAGIA È QUI: La cesoia che scarta il mittente.
+                                    # Dividiamo la stringa ogni volta che troviamo VIA, PIAZZA, Z.I. ecc.
+                                    split_via = re.split(r'(?i)\s+(?=VIA\b|VIALE\b|V\.LE\b|PIAZZA\b|P\.ZZA\b|P\.LE\b|STRADA\b|CORSO\b|C\.SO\b|LOC\.\b|Z\.I\.\b)', " " + indirizzo_sporco)
+                                    
+                                    # Prendiamo solo l'ultimo pezzo tagliato (l'indirizzo finale)
+                                    indirizzo = split_via[-1].strip()
 
                             # 4. DDT (Solo Numeri)
                             ddt_grezzo = ""
@@ -148,19 +150,15 @@ def elabora_dati(file_pdf, file_csv):
             try:
                 destinatario_csv = str(row['RAGIONE SOCIALE DESTINATARIO']).strip()
                 
-                # --- COSTRUZIONE INDIRIZZO COMPLETO ---
                 via_csv = str(row['INDIRIZZO']).strip()
                 cap_grezzo = str(row['CAP']).strip()
                 localita_csv = str(row['LOCALITA']).strip()
                 provincia_csv = str(row['PROVINCIA']).strip()
                 
-                # Applica gli zeri a sinistra fino ad arrivare a 5 cifre (solo se il CAP non è vuoto)
                 cap_csv = cap_grezzo.zfill(5) if cap_grezzo else ""
                 
-                # Fonde le quattro parti e rimuove gli spazi doppi se manca qualche campo
                 indirizzo_csv = f"{via_csv} {cap_csv} {localita_csv} {provincia_csv}".strip()
                 indirizzo_csv = " ".join(indirizzo_csv.split())
-                # --------------------------------------
                 
                 peso_csv = str(row['PESO LORDO']).strip()
                 ddt_csv_grezzo = str(row['DDT']).strip()
