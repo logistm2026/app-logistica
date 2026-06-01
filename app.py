@@ -4,13 +4,13 @@ import pandas as pd
 import re
 import json
 import gspread
+import hashlib
 from oauth2client.service_account import ServiceAccountCredentials
 
 # --- CONNESSIONE A GOOGLE SHEETS ---
 def connetti_google_sheets():
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        # Leggiamo la chiave nascosta in modo sicuro
         creds_dict = json.loads(st.secrets["google_key"])
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
         client = gspread.authorize(creds)
@@ -21,18 +21,13 @@ def connetti_google_sheets():
         st.error(f"Errore di connessione a Google Fogli: {e}")
         return None
 
-import hashlib
-
+# --- GENERATORE ID UNIVOCO (HASH) ---
 def genera_id(destinatario, ddt):
-    # Creiamo una stringa univoca composta dai dati principali
     stringa_base = f"{destinatario.upper()}-{ddt.upper()}"
-    
-    # Generiamo un hash breve (prendiamo i primi 8 caratteri)
     codice_univoco = hashlib.md5(stringa_base.encode()).hexdigest()[:8].upper()
-    
     return codice_univoco
 
-# --- FUNZIONE CHIRURGICA PER IL PDF E CSV (FILTRO DDT NUMERICO + INDIRIZZO COMPLETO) ---
+# --- FUNZIONE CHIRURGICA DEFINITIVA ---
 def elabora_dati(file_pdf, file_csv):
     spedizioni = {}
 
@@ -64,15 +59,12 @@ def elabora_dati(file_pdf, file_csv):
                                 if len(pezzi_riga0) >= 3:
                                     destinatario = pezzi_riga0[-2].strip()
                                 else:
-                                    # Salvagente Intelligente: Separa al primo SRL/SPA del mittente
                                     match = re.search(r'([A-Za-z0-9\s\.\&\-\'/]+?)\s+\d+\s+\d{1,3}(?:\.\d{3})*,\d+', riga)
                                     if match:
                                         testo_grezzo = match.group(1).strip()
                                         testo_grezzo = re.sub(r'^\s*(?:DAP|PF)\b', '', testo_grezzo, flags=re.IGNORECASE).strip()
-                                        
                                         split_societa = re.split(r'(?i)\b(?:SRL|S\.R\.L\.|SPA|S\.P\.A\.|SNC|S\.N\.C\.)\b', testo_grezzo)
                                         pezzi_validi = [p.strip() for p in split_societa if p.strip()]
-                                        
                                         if len(pezzi_validi) >= 2:
                                             destinatario = pezzi_validi[-1]
                                         elif len(pezzi_validi) == 1:
@@ -93,24 +85,30 @@ def elabora_dati(file_pdf, file_csv):
                                 if tutti_i_decimali:
                                     peso = tutti_i_decimali[0]
 
-                            # 3. INDIRIZZO PULITO (Anti-Mittente)
-                            via = ""
-                            if i+1 < len(righe):
-                                pezzi_riga1 = re.split(r'\s{2,}', righe[i+1].strip())
-                                via_grezza = pezzi_riga1[-1].strip() if pezzi_riga1 else ""
-                                
-                                split_via = re.split(r'(?i)\s+(?=VIA\b|VIALE\b|V\.LE\b|PIAZZA\b|P\.ZZA\b|P\.LE\b|STRADA\b|CORSO\b|C\.SO\b|LOC\.\b|Z\.I\.\b)', via_grezza)
-                                via = split_via[-1].strip() if split_via else via_grezza
-                                
-                            citta = ""
-                            for j in range(1, 4):
-                                if i+j < len(righe):
-                                    matches_citta = re.findall(r'\d{5}\s+[A-Za-z\s\']+[A-Z]{2}(?:\s*IT)?', righe[i+j])
-                                    if matches_citta:
-                                        citta = matches_citta[-1].strip()
-                                        break
-                                        
-                            indirizzo = f"{via} {citta}".strip()
+                            # 3. INDIRIZZO PULITO (Anti-Spazzatura + Calamita + Vaticano)
+                            # Uniamo le successive righe per cercare l'indirizzo
+                            blocco_testo = " ".join([righe[i+j].strip() for j in range(1, 5) if i+j < len(righe)])
+                            
+                            # Fase 1: Lavaggio (Rimuove telefoni, P.IVA e scritte inutili)
+                            blocco_pulito = re.sub(r'\b\d{9,10}\b', '', blocco_testo)
+                            blocco_pulito = re.sub(r'(?i)\b(TEL|CELL|TELEFONO|P\.IVA|PIVA|C\.F\.)\b', '', blocco_pulito)
+                            
+                            indirizzo = "INDIRIZZO NON TROVATO"
+                            blocco_upper = blocco_pulito.upper()
+                            
+                            # Fase 2: Calamita
+                            if "VATICANO" in blocco_upper or "VATICANA" in blocco_upper:
+                                # Eccezione Vaticano
+                                match_vat = re.search(r'(?i)([A-Za-z0-9\s]+?CITT[AÀ\']\s+DEL\s+VATICANO\s*(?:VA)?)', blocco_pulito)
+                                if match_vat:
+                                    indirizzo_grezzo = match_vat.group(1).strip()
+                                    # Pulisce eventuali residui del mittente prima del nome vero e proprio
+                                    indirizzo = re.sub(r'(?i)^(SPED|DEST|CORRISPONDENTE|IMBALLI).*?\s+', '', indirizzo_grezzo).strip()
+                            else:
+                                # Regola Standard per l'Italia
+                                match_standard = re.search(r'(?i)(?:VIA|VIALE|V\.LE|PIAZZA|P\.ZZA|P\.LE|STRADA|CORSO|C\.SO|LOC\.|Z\.I\.)\s+[A-Za-z0-9\s\.\,\-\'/]+?\d{5}\s+[A-Za-z\s\']+[A-Z]{2}', blocco_pulito)
+                                if match_standard:
+                                    indirizzo = match_standard.group(0).strip()
 
                             # 4. DDT (Solo Numeri)
                             ddt_grezzo = ""
@@ -121,7 +119,6 @@ def elabora_dati(file_pdf, file_csv):
                                         ddt_grezzo = re.sub(r'.*Note\s*[:\s]*', '', riga_check).strip()
                                         break 
                             
-                            # Applica il filtro: mantiene solo se formato interamente da cifre numeriche
                             ddt = ddt_grezzo if ddt_grezzo.isdigit() else ""
 
                             id_univoco = genera_id(destinatario, ddt)
@@ -170,7 +167,6 @@ def elabora_dati(file_pdf, file_csv):
                 
                 if destinatario_csv == "": continue
                 
-                # Applica lo stesso filtro numerico anche per il CSV
                 ddt_csv = ddt_csv_grezzo if ddt_csv_grezzo.isdigit() else ""
                 
                 id_univoco_csv = genera_id(destinatario_csv, ddt_csv)
@@ -201,7 +197,6 @@ def invia_dati_a_google(pacchi_finali):
     da_aggiornare = []
     da_inserire = []
     
-    # Smistiamo i pacchi: quali sono da aggiornare e quali nuovi?
     for pacco in pacchi_finali:
         id_pacco = pacco["ID_Pacco"]
         nuova_riga = []
@@ -219,14 +214,12 @@ def invia_dati_a_google(pacchi_finali):
             
     successi = 0
     
-    # ESECUZIONE BATCH (Anti-blocco e copia formattazione)
     try:
         if da_aggiornare:
             foglio.batch_update(da_aggiornare, value_input_option="USER_ENTERED")
             successi += len(da_aggiornare)
             
         if da_inserire:
-            # Il parametro INSERT_ROWS fa la magia: spinge giù le righe copiando bordi e colori
             foglio.append_rows(da_inserire, value_input_option="USER_ENTERED", insert_data_option="INSERT_ROWS")
             successi += len(da_inserire)
             
