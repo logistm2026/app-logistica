@@ -14,23 +14,26 @@ def connetti_google_sheets():
         creds_dict = json.loads(st.secrets["google_key"])
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
         client = gspread.authorize(creds)
+        # INSERISCI QUI IL NOME ESATTO DEL TUO FILE GOOGLE E DEL FOGLIO
         foglio = client.open("Logistica Tracking").worksheet("Spedizioni") 
         return foglio
     except Exception as e:
         st.error(f"Errore di connessione a Google Fogli: {e}")
         return None
 
-# --- GENERATORE ID UNIVOCO (HASH MIGLIORATO ANTI-SOVRASCRITTURA) ---
-def genera_id(destinatario, indirizzo, peso, ddt):
-    # Usiamo 4 parametri per garantire che ogni pacco sia unico anche senza DDT
-    stringa_base = f"{str(destinatario).strip().upper()}-{str(indirizzo).strip().upper()}-{str(peso).strip()}-{str(ddt).strip().upper()}"
+# --- GENERATORE ID UNIVOCO (HASH) ---
+def genera_id(destinatario, ddt):
+    stringa_base = f"{destinatario.upper()}-{ddt.upper()}"
     codice_univoco = hashlib.md5(stringa_base.encode()).hexdigest()[:8].upper()
     return codice_univoco
 
-# --- FUNZIONE CHIRURGICA ---
+# --- FUNZIONE CHIRURGICA DEFINITIVA ---
 def elabora_dati(file_pdf, file_csv):
     spedizioni = {}
 
+    # ==========================================
+    # 1. LETTURA PDF
+    # ==========================================
     if file_pdf is not None:
         with pdfplumber.open(file_pdf) as pdf:
             for pagina in pdf.pages:
@@ -40,9 +43,10 @@ def elabora_dati(file_pdf, file_csv):
                 righe = testo.split('\n')
                 
                 for i, riga in enumerate(righe):
+                    # CORREZIONE 1: Accetta spedizioni da 3 a 6 cifre (es. 4977/2026/SE)
                     if re.search(r'(\d{3,6}/\d{4}/[A-Z]+)', riga):
                         try:
-                            # 1. DESTINATARIO (Logica Stabile)
+                            # 1. DESTINATARIO
                             pezzi_riga0 = re.split(r'\s{2,}', riga.strip())
                             destinatario = "ERRORE NOME"
                             
@@ -68,22 +72,27 @@ def elabora_dati(file_pdf, file_csv):
                                             parole = pezzi_validi[0].split()
                                             destinatario = " ".join(parole[-3:])
 
-                            # 2. PESO LORDO (Migliorato)
-                            peso = "0"
-                            parole_riga = riga.split()
-                            
-                            # Cerchiamo al volo il primo numero decimale formattato (es. 233,00 o 1.097,00)
-                            decimali = re.findall(r'\b\d+(?:\.\d{3})*,\d+\b', riga)
-                            if decimali:
-                                peso = decimali[0]
-                            elif len(parole_riga) >= 6:
-                                # Fallback se è formattato come numero intero
-                                if re.match(r'^\d+$', parole_riga[-5]): peso = parole_riga[-5]
-                                elif re.match(r'^\d+$', parole_riga[-6]): peso = parole_riga[-6]
+                            # Pulizia finale del nome destinatario
+                            destinatario = re.sub(r'(?i)\b(?:VIA|VIALE|P\.ZZA|PIAZZA|LOC\.).*', '', destinatario).strip()
 
-                            # 3. INDIRIZZO PULITO (Logica Stabile)
+                            # 2. PESO LORDO
+                            parole_riga = riga.split()
+                            peso = "0"
+                            if len(parole_riga) >= 6:
+                                if re.match(r'^\d{1,3}(?:\.\d{3})*,\d+$|^\d+,\d+$', parole_riga[-5]):
+                                    peso = parole_riga[-5]
+                                elif re.match(r'^\d{1,3}(?:\.\d{3})*,\d+$|^\d+,\d+$', parole_riga[-6]):
+                                    peso = parole_riga[-6]
+                                    
+                            if peso == "0":
+                                tutti_i_decimali = re.findall(r'\b\d{1,3}(?:\.\d{3})*,\d{2,4}\b', riga)
+                                if tutti_i_decimali:
+                                    peso = tutti_i_decimali[0]
+
+                            # 3. INDIRIZZO PULITO
                             blocco_testo = " ".join([righe[i+j].strip() for j in range(1, 5) if i+j < len(righe)])
                             
+                            # Lavaggio Spazzatura
                             blocco_pulito = re.sub(r'\b\d{9,10}\b', '', blocco_testo)
                             blocco_pulito = re.sub(r'(?i)\b(TEL|CELL|TELEFONO|P\.IVA|PIVA|C\.F\.)\b', '', blocco_pulito)
                             blocco_pulito = re.sub(r'(?i)Corrispondente\s*(?:/|\\)?\s*Distributore', '', blocco_pulito)
@@ -99,13 +108,19 @@ def elabora_dati(file_pdf, file_csv):
                                     indirizzo_grezzo = match_vat.group(1).strip()
                                     indirizzo = re.sub(r'(?i)^(SPED|DEST|CORRISPONDENTE|IMBALLI).*?\s+', '', indirizzo_grezzo).strip()
                             else:
-                                match_standard = re.search(r'(?i)(?:VIA|VIALE|V\.LE|PIAZZA|P\.ZZA|P\.LE|STRADA|CORSO|C\.SO|LOC\.|Z\.I\.)\s+[A-Za-z0-9\s\.\,\-\'/]+?\d{5}\s+[A-Za-z\s\']+[A-Z]{2}(?:\s*IT)?', blocco_pulito)
-                                if match_standard:
-                                    indirizzo_sporco = match_standard.group(0).strip()
-                                    split_via = re.split(r'(?i)\s+(?=VIA\b|VIALE\b|V\.LE\b|PIAZZA\b|P\.ZZA\b|P\.LE\b|STRADA\b|CORSO\b|C\.SO\b|LOC\.\b|Z\.I\.\b)', " " + indirizzo_sporco)
-                                    indirizzo = split_via[-1].strip()
+                                # CORREZIONE 2: Trova TUTTI gli indirizzi completi nel blocco e prende RIGOROSAMENTE L'ULTIMO (Destinatario)
+                                pattern_indirizzo = r'(?i)(?:VIA|VIALE|V\.LE|PIAZZA|P\.ZZA|P\.LE|STRADA|CORSO|C\.SO|LOC\.|Z\.I\.|ZONA\s*IND(?:USTRIALE|\.?))\s+[A-Za-z0-9\s\.\,\-\'/]+?\d{5}\s+[A-Za-z\s\']+[A-Z]{2}(?:\s*IT)?'
+                                tutti_gli_indirizzi = re.findall(pattern_indirizzo, blocco_pulito)
+                                
+                                if tutti_gli_indirizzi:
+                                    indirizzo = tutti_gli_indirizzi[-1].strip()
+                                else:
+                                    # Fallback di emergenza: se manca la parola "VIA", prende almeno l'ultimo CAP e Città
+                                    matches_citta = re.findall(r'\d{5}\s+[A-Za-z\s\']+[A-Z]{2}(?:\s*IT)?', blocco_pulito)
+                                    if matches_citta:
+                                        indirizzo = matches_citta[-1].strip()
 
-                            # 4. DDT (Logica Stabile)
+                            # 4. DDT
                             ddt_grezzo = ""
                             for j in range(1, 6):
                                 if i+j < len(righe):
@@ -116,13 +131,12 @@ def elabora_dati(file_pdf, file_csv):
                             
                             ddt = ddt_grezzo if ddt_grezzo.isdigit() else ""
 
-                            # L'ID_UNIVOCO ORA E' CREATO CON TUTTI I CAMPI
-                            id_univoco = genera_id(destinatario, indirizzo, peso, ddt)
+                            id_univoco = genera_id(destinatario, ddt)
                             spedizioni[id_univoco] = {
                                 "ID_Pacco": id_univoco, 
                                 "Destinatario": destinatario, 
                                 "Indirizzo": indirizzo, 
-                                "Peso Lordo": peso,  # LA CHIAVE ORA È ESATTA SENZA UNDERSCORE!
+                                "Peso_Lordo": peso, 
                                 "DDT": ddt
                             }
                         except Exception as e:
@@ -131,39 +145,42 @@ def elabora_dati(file_pdf, file_csv):
                                 "ID_Pacco": id_emergenza, 
                                 "Destinatario": "ERRORE LETTURA", 
                                 "Indirizzo": str(e), 
-                                "Peso Lordo": "0", 
+                                "Peso_Lordo": "0", 
                                 "DDT": ""
                             }
 
+    # ==========================================
+    # 2. LETTURA CSV
+    # ==========================================
     if file_csv is not None:
         df_csv = pd.read_csv(file_csv, sep=';', dtype=str).fillna("")
         for index, row in df_csv.iterrows():
             try:
-                destinatario_csv = str(row.get('RAGIONE SOCIALE DESTINATARIO', '')).strip()
-                if destinatario_csv == "": continue
+                destinatario_csv = str(row['RAGIONE SOCIALE DESTINATARIO']).strip()
                 
-                via_csv = str(row.get('INDIRIZZO', '')).strip()
-                cap_grezzo = str(row.get('CAP', '')).strip()
-                localita_csv = str(row.get('LOCALITA', '')).strip()
-                provincia_csv = str(row.get('PROVINCIA', '')).strip()
+                via_csv = str(row['INDIRIZZO']).strip()
+                cap_grezzo = str(row['CAP']).strip()
+                localita_csv = str(row['LOCALITA']).strip()
+                provincia_csv = str(row['PROVINCIA']).strip()
                 
                 cap_csv = cap_grezzo.zfill(5) if cap_grezzo else ""
                 
                 indirizzo_csv = f"{via_csv} {cap_csv} {localita_csv} {provincia_csv}".strip()
                 indirizzo_csv = " ".join(indirizzo_csv.split())
                 
-                # Cerca sia la versione maiuscola che normale della colonna
-                peso_csv = str(row.get('PESO LORDO', row.get('Peso Lordo', '0'))).strip()
-                ddt_csv_grezzo = str(row.get('DDT', '')).strip()
+                peso_csv = str(row['PESO LORDO']).strip()
+                ddt_csv_grezzo = str(row['DDT']).strip()
+                
+                if destinatario_csv == "": continue
                 
                 ddt_csv = ddt_csv_grezzo if ddt_csv_grezzo.isdigit() else ""
                 
-                id_univoco_csv = genera_id(destinatario_csv, indirizzo_csv, peso_csv, ddt_csv)
+                id_univoco_csv = genera_id(destinatario_csv, ddt_csv)
                 spedizioni[id_univoco_csv] = {
                     "ID_Pacco": id_univoco_csv, 
                     "Destinatario": destinatario_csv, 
                     "Indirizzo": indirizzo_csv, 
-                    "Peso Lordo": peso_csv, # LA CHIAVE ORA È ESATTA SENZA UNDERSCORE!
+                    "Peso_Lordo": peso_csv, 
                     "DDT": ddt_csv
                 }
             except KeyError as e:
@@ -190,7 +207,6 @@ def invia_dati_a_google(pacchi_finali):
         id_pacco = pacco["ID_Pacco"]
         nuova_riga = []
         for colonna in intestazioni:
-            # SE LA COLONNA NON ESISTE (es. "Peso_Lordo" vs "Peso Lordo") QUI LA LASCIEREBBE VUOTA. ORA E' FIXATO!
             nuova_riga.append(pacco.get(colonna, ""))
             
         if id_pacco in mappa_righe:
