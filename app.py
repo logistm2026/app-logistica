@@ -27,7 +27,7 @@ def genera_id(destinatario, ddt):
     codice_univoco = hashlib.md5(stringa_base.encode()).hexdigest()[:8].upper()
     return codice_univoco
 
-# --- FUNZIONE CHIRURGICA DEFINITIVA (CON CESOIA ANTI-MITTENTE) ---
+# --- FUNZIONE CHIRURGICA DEFINITIVA (PULIZIA TOTALE) ---
 def elabora_dati(file_pdf, file_csv):
     spedizioni = {}
 
@@ -85,32 +85,52 @@ def elabora_dati(file_pdf, file_csv):
                                 if tutti_i_decimali:
                                     peso = tutti_i_decimali[0]
 
-                            # 3. INDIRIZZO PULITO (Calamita + Cesoia Anti-Mittente)
+                            # 3. INDIRIZZO PULITO (Anti-Spazzatura + Calamita + Vaticano)
                             blocco_testo = " ".join([righe[i+j].strip() for j in range(1, 5) if i+j < len(righe)])
                             
+                            # Fase 1: Lavaggio (Rimuove telefoni, P.IVA, Corrispondente e scritte inutili)
                             blocco_pulito = re.sub(r'\b\d{9,10}\b', '', blocco_testo)
                             blocco_pulito = re.sub(r'(?i)\b(TEL|CELL|TELEFONO|P\.IVA|PIVA|C\.F\.)\b', '', blocco_pulito)
+                            # <-- ECCO LA REGOLA CHE CANCELLA IL CORRISPONDENTE E GLI IMBALLI -->
+                            blocco_pulito = re.sub(r'(?i)Corrispondente\s*(?:/|\\)?\s*Distributore', '', blocco_pulito)
+                            blocco_pulito = re.sub(r'(?i)\bCorrispondente\b', '', blocco_pulito)
+                            blocco_pulito = re.sub(r'(?i)Imballi(?:/Packages)?\s*[:\.]?', '', blocco_pulito)
                             
                             indirizzo = "INDIRIZZO NON TROVATO"
                             blocco_upper = blocco_pulito.upper()
                             
+                            # Fase 2: Calamita
                             if "VATICANO" in blocco_upper or "VATICANA" in blocco_upper:
                                 match_vat = re.search(r'(?i)([A-Za-z0-9\s]+?CITT[AÀ\']\s+DEL\s+VATICANO\s*(?:VA)?)', blocco_pulito)
                                 if match_vat:
                                     indirizzo_grezzo = match_vat.group(1).strip()
                                     indirizzo = re.sub(r'(?i)^(SPED|DEST|CORRISPONDENTE|IMBALLI).*?\s+', '', indirizzo_grezzo).strip()
                             else:
-                                # Magnete Standard
-                                match_standard = re.search(r'(?i)(?:VIA|VIALE|V\.LE|PIAZZA|P\.ZZA|P\.LE|STRADA|CORSO|C\.SO|LOC\.|Z\.I\.)\s+[A-Za-z0-9\s\.\,\-\'/]+?\d{5}\s+[A-Za-z\s\']+[A-Z]{2}(?:\s*IT)?', blocco_pulito)
-                                if match_standard:
-                                    indirizzo_sporco = match_standard.group(0).strip()
+                                # A. Cerchiamo il CAP e la Città del Destinatario (l'ultimo in fondo a destra)
+                                citta_destinatario = ""
+                                matches_citta = re.findall(r'\d{5}\s+[A-Za-z\s\']+[A-Z]{2}(?:\s*IT)?', blocco_pulito)
+                                if matches_citta:
+                                    citta_destinatario = matches_citta[-1].strip()
+                                
+                                # B. Cerchiamo la Via
+                                match_via = re.search(r'(?i)(?:VIA|VIALE|V\.LE|PIAZZA|P\.ZZA|P\.LE|STRADA|CORSO|C\.SO|LOC\.|Z\.I\.)\s+[A-Za-z0-9\s\.\,\-\'/]+', blocco_pulito)
+                                via_destinatario = ""
+                                if match_via:
+                                    via_sporca = match_via.group(0)
+                                    # Tagliamo via tutto quello che c'è dopo il primo CAP trovato (elimina la città del mittente)
+                                    via_sporca = re.sub(r'\s*\d{5}\s+.*', '', via_sporca)
                                     
-                                    # LA MAGIA È QUI: La cesoia che scarta il mittente.
-                                    # Dividiamo la stringa ogni volta che troviamo VIA, PIAZZA, Z.I. ecc.
-                                    split_via = re.split(r'(?i)\s+(?=VIA\b|VIALE\b|V\.LE\b|PIAZZA\b|P\.ZZA\b|P\.LE\b|STRADA\b|CORSO\b|C\.SO\b|LOC\.\b|Z\.I\.\b)', " " + indirizzo_sporco)
-                                    
-                                    # Prendiamo solo l'ultimo pezzo tagliato (l'indirizzo finale)
-                                    indirizzo = split_via[-1].strip()
+                                    # Cesoia: prendiamo solo l'ultima occorrenza di VIA, PIAZZA ecc.
+                                    split_via = re.split(r'(?i)\s+(?=VIA\b|VIALE\b|V\.LE\b|PIAZZA\b|P\.ZZA\b|P\.LE\b|STRADA\b|CORSO\b|C\.SO\b|LOC\.\b|Z\.I\.\b)', " " + via_sporca)
+                                    via_destinatario = split_via[-1].strip()
+                                
+                                # Uniamo i due pezzi puliti
+                                if via_destinatario and citta_destinatario:
+                                    indirizzo = f"{via_destinatario} {citta_destinatario}".strip()
+                                elif citta_destinatario:
+                                    indirizzo = citta_destinatario
+                                elif via_destinatario:
+                                    indirizzo = via_destinatario
 
                             # 4. DDT (Solo Numeri)
                             ddt_grezzo = ""
@@ -142,7 +162,7 @@ def elabora_dati(file_pdf, file_csv):
                             }
 
     # ==========================================
-    # 2. LETTURA CSV
+    # 2. LETTURA CSV (Invariata)
     # ==========================================
     if file_csv is not None:
         df_csv = pd.read_csv(file_csv, sep=';', dtype=str).fillna("")
