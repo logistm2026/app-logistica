@@ -5,7 +5,6 @@ import gspread
 import hashlib
 from oauth2client.service_account import ServiceAccountCredentials
 
-# IL SETUP DELLA PAGINA DEVE STARE QUI IN CIMA!
 st.set_page_config(page_title="Hub Logistica", page_icon="📦", layout="centered")
 
 # --- CONNESSIONE A GOOGLE SHEETS ---
@@ -45,8 +44,8 @@ def elabora_dati(file_fbn, file_csv):
                 destinatario = str(row.iloc[3]).strip()
                 if not destinatario: continue
                 
-                ddt_grezzo = str(row.iloc[0]).strip()
-                ddt = ddt_grezzo if ddt_grezzo.isdigit() else ""
+                # NIENTE PIÙ FILTRI: ORA PRENDE QUALSIASI COSA CI SIA NEL DDT
+                ddt = str(row.iloc[0]).strip()
                 
                 via = str(row.iloc[4]).strip()
                 civico = str(row.iloc[5]).strip()
@@ -95,8 +94,8 @@ def elabora_dati(file_fbn, file_csv):
                 peso_csv_grezzo = str(row.get('PESO LORDO', row.get('Peso Lordo', '0'))).strip()
                 peso_csv = peso_csv_grezzo.replace('.', ',')
                 
-                ddt_csv_grezzo = str(row.get('DDT', '')).strip()
-                ddt_csv = ddt_csv_grezzo if ddt_csv_grezzo.isdigit() else ""
+                # NIENTE PIÙ FILTRI: ORA PRENDE QUALSIASI COSA CI SIA NEL DDT
+                ddt_csv = str(row.get('DDT', '')).strip()
                 
                 id_univoco_csv = genera_id(destinatario_csv, indirizzo_csv, peso_csv, ddt_csv)
                 spedizioni[id_univoco_csv] = {
