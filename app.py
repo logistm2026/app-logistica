@@ -5,6 +5,9 @@ import gspread
 import hashlib
 from oauth2client.service_account import ServiceAccountCredentials
 
+# IL SETUP DELLA PAGINA DEVE STARE QUI IN CIMA!
+st.set_page_config(page_title="Hub Logistica", page_icon="📦", layout="centered")
+
 # --- CONNESSIONE A GOOGLE SHEETS ---
 def connetti_google_sheets():
     try:
@@ -54,7 +57,6 @@ def elabora_dati(file_fbn, file_csv):
                 indirizzo_completo = f"{via} {civico} {cap} {citta} {prov}".strip()
                 indirizzo_completo = " ".join(indirizzo_completo.split()) 
                 
-                # LA MAGIA: Sostituiamo il punto con la virgola per ingannare Google Fogli
                 peso_grezzo = str(row.iloc[10]).strip()
                 peso = peso_grezzo.replace('.', ',')
                 
@@ -90,7 +92,6 @@ def elabora_dati(file_fbn, file_csv):
                 indirizzo_csv = f"{via_csv} {cap_csv} {localita_csv} {provincia_csv}".strip()
                 indirizzo_csv = " ".join(indirizzo_csv.split())
                 
-                # Applichiamo la stessa protezione anti-orologio anche al tuo file
                 peso_csv_grezzo = str(row.get('PESO LORDO', row.get('Peso Lordo', '0'))).strip()
                 peso_csv = peso_csv_grezzo.replace('.', ',')
                 
@@ -157,3 +158,22 @@ def invia_dati_a_google(pacchi_finali):
         return successi
 
 # --- INTERFACCIA UTENTE ---
+st.title("📦 Hub Sincronizzazione Spedizioni")
+st.markdown("Carica le distinte dei corrieri per sincronizzarle istantaneamente con Google Fogli.")
+
+col1, col2 = st.columns(2)
+with col1:
+    file_fbn = st.file_uploader("📄 Carica File FBN (Excel/CSV)", type=["xlsx", "xls", "csv"])
+with col2:
+    file_csv_tuo = st.file_uploader("📊 Carica il tuo CSV", type=["csv"])
+
+if file_fbn is not None or file_csv_tuo is not None:
+    if st.button("🚀 Fondi e Scrivi su Google Fogli", use_container_width=True):
+        with st.spinner('Elaborazione super-veloce in corso...'):
+            pacchi_finali = elabora_dati(file_fbn, file_csv_tuo)
+            if not pacchi_finali:
+                st.warning("Non ho trovato dati validi da elaborare.")
+            else:
+                successi = invia_dati_a_google(pacchi_finali)
+                if successi:
+                    st.success(f"✅ Ottimo! {successi} spedizioni sincronizzate perfettamente al primo colpo!")
