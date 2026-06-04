@@ -3,6 +3,7 @@ import pandas as pd
 import json
 import gspread
 import hashlib
+import pytz
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime # Aggiunto per gestire data e ora
 
