@@ -4,6 +4,7 @@ import json
 import gspread
 import hashlib
 from oauth2client.service_account import ServiceAccountCredentials
+from datetime import datetime # Aggiunto per gestire data e ora
 
 st.set_page_config(page_title="Hub Logistica", page_icon="📦", layout="centered")
 
@@ -20,18 +21,22 @@ def connetti_google_sheets():
         st.error(f"Errore di connessione a Google Fogli: {e}")
         return None
 
-# --- GENERATORE ID UNIVOCO ---
+# --- GENERATORE ID UNIVOCO (NON TOCCARE: Scudo Anti-Doppioni) ---
 def genera_id(destinatario, indirizzo, peso, ddt):
     stringa_base = f"{str(destinatario).strip().upper()}-{str(indirizzo).strip().upper()}-{str(peso).strip()}-{str(ddt).strip().upper()}"
     codice_univoco = hashlib.md5(stringa_base.encode()).hexdigest()[:8].upper()
     return codice_univoco
 
-# --- FUNZIONE DI ELABORAZIONE (100% EXCEL/CSV) ---
+# --- FUNZIONE DI ELABORAZIONE ---
 def elabora_dati(file_fbn, file_csv):
     spedizioni = {}
+    
+    # Creiamo un "timbro" del momento esatto in cui hai cliccato il pulsante (es. 20260604_1807)
+    timestamp_run = datetime.now().strftime("%Y%m%d_%H%M")
+    contatore = 1
 
     # ==========================================
-    # 1. LETTURA FILE FBN (Excel o CSV)
+    # 1. LETTURA FILE FBN
     # ==========================================
     if file_fbn is not None:
         try:
@@ -44,9 +49,7 @@ def elabora_dati(file_fbn, file_csv):
                 destinatario = str(row.iloc[3]).strip()
                 if not destinatario: continue
                 
-                # NIENTE PIÙ FILTRI: ORA PRENDE QUALSIASI COSA CI SIA NEL DDT
                 ddt = str(row.iloc[0]).strip()
-                
                 via = str(row.iloc[4]).strip()
                 civico = str(row.iloc[5]).strip()
                 cap = str(row.iloc[6]).strip().zfill(5) if str(row.iloc[6]).strip() else ""
@@ -61,8 +64,13 @@ def elabora_dati(file_fbn, file_csv):
                 
                 id_univoco = genera_id(destinatario, indirizzo_completo, peso, ddt)
                 
+                # Generiamo la stringa progressiva per l'ordinamento di Autocrat
+                ordinamento = f"{timestamp_run}_{str(contatore).zfill(3)}"
+                contatore += 1
+                
                 spedizioni[id_univoco] = {
                     "ID_Pacco": id_univoco, 
+                    "Ordinamento": ordinamento, # LA NUOVA COLONNA
                     "Destinatario": destinatario, 
                     "Indirizzo": indirizzo_completo, 
                     "Peso Lordo": peso, 
@@ -94,12 +102,17 @@ def elabora_dati(file_fbn, file_csv):
                 peso_csv_grezzo = str(row.get('PESO LORDO', row.get('Peso Lordo', '0'))).strip()
                 peso_csv = peso_csv_grezzo.replace('.', ',')
                 
-                # NIENTE PIÙ FILTRI: ORA PRENDE QUALSIASI COSA CI SIA NEL DDT
                 ddt_csv = str(row.get('DDT', '')).strip()
                 
                 id_univoco_csv = genera_id(destinatario_csv, indirizzo_csv, peso_csv, ddt_csv)
+                
+                # Continuiamo ad aumentare il contatore per non rompere l'ordine
+                ordinamento_csv = f"{timestamp_run}_{str(contatore).zfill(3)}"
+                contatore += 1
+                
                 spedizioni[id_univoco_csv] = {
                     "ID_Pacco": id_univoco_csv, 
+                    "Ordinamento": ordinamento_csv, # LA NUOVA COLONNA
                     "Destinatario": destinatario_csv, 
                     "Indirizzo": indirizzo_csv, 
                     "Peso Lordo": peso_csv, 
@@ -120,6 +133,10 @@ def invia_dati_a_google(pacchi_finali):
     tutti_i_dati = foglio.get_all_records()
     intestazioni = foglio.row_values(1) 
     
+    # Se per caso non hai ancora la colonna "Ordinamento" sul foglio, eviterà errori
+    if "Ordinamento" not in intestazioni:
+        st.warning("⚠️ Promemoria: Ricordati di aggiungere una colonna chiamata 'Ordinamento' su Google Fogli!")
+    
     mappa_righe = {str(riga.get("ID_Pacco", "")): idx + 2 for idx, riga in enumerate(tutti_i_dati)}
     
     da_aggiornare = []
@@ -134,8 +151,8 @@ def invia_dati_a_google(pacchi_finali):
         if id_pacco in mappa_righe:
             riga_num = mappa_righe[id_pacco]
             da_aggiornare.append({
-                'range': f'A{riga_num}:E{riga_num}',
-                'values': [nuova_riga[:5]]
+                'range': f'A{riga_num}:E{riga_num}',  # ATTENZIONE: Se hai aggiunto una colonna, verifica che "E" copra tutto il range. Potresti dover mettere 'A{riga_num}:F{riga_num}' o 'Z{riga_num}'. Il codice di update potrebbe tagliare l'ultima colonna se non è dinamico.
+                'values': [nuova_riga]
             })
         else:
             da_inserire.append(nuova_riga)
@@ -144,8 +161,17 @@ def invia_dati_a_google(pacchi_finali):
     
     try:
         if da_aggiornare:
-            foglio.batch_update(da_aggiornare, value_input_option="USER_ENTERED")
-            successi += len(da_aggiornare)
+            # FIX: Calcola dinamicamente la lettera finale della colonna in base a quante intestazioni hai
+            lettera_finale = chr(ord('A') + len(intestazioni) - 1)
+            da_aggiornare_fix = []
+            for item in da_aggiornare:
+                riga_n = item['range'].split(':')[0][1:]
+                da_aggiornare_fix.append({
+                    'range': f'A{riga_n}:{lettera_finale}{riga_n}',
+                    'values': item['values']
+                })
+            foglio.batch_update(da_aggiornare_fix, value_input_option="USER_ENTERED")
+            successi += len(da_aggiornare_fix)
             
         if da_inserire:
             foglio.append_rows(da_inserire, value_input_option="USER_ENTERED", insert_data_option="INSERT_ROWS")
