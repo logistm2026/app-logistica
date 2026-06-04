@@ -33,7 +33,8 @@ def elabora_dati(file_fbn, file_csv):
     spedizioni = {}
     
     # Creiamo un "timbro" del momento esatto in cui hai cliccato il pulsante (es. 20260604_1807)
-    timestamp_run = datetime.now().strftime("%Y%m%d_%H%M")
+    fuso_italia = pytz.timezone('Europe/Rome')
+    timestamp_run = datetime.now(fuso_italia).strftime("%Y%m%d_%H%M")
     contatore = 1
 
     # ==========================================
