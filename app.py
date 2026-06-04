@@ -33,17 +33,14 @@ def elabora_dati(file_fbn, file_csv):
     # ==========================================
     if file_fbn is not None:
         try:
-            # Capisce automaticamente se hai caricato un Excel o un CSV
             if file_fbn.name.endswith('.csv'):
                 df_fbn = pd.read_csv(file_fbn, dtype=str).fillna("")
             else:
                 df_fbn = pd.read_excel(file_fbn, dtype=str).fillna("")
 
             for index, row in df_fbn.iterrows():
-                # USIAMO GLI INDICI NUMERICI (iloc) PER AGGIRARE LE COLONNE COL NOME DOPPIO!
-                # Col 0: DDT | Col 3: Nome | Col 4: Via | Col 5: Civico | Col 6: CAP | Col 7: Città | Col 8: Prov | Col 10: Peso
                 destinatario = str(row.iloc[3]).strip()
-                if not destinatario: continue # Salta le righe vuote
+                if not destinatario: continue
                 
                 ddt_grezzo = str(row.iloc[0]).strip()
                 ddt = ddt_grezzo if ddt_grezzo.isdigit() else ""
@@ -54,11 +51,12 @@ def elabora_dati(file_fbn, file_csv):
                 citta = str(row.iloc[7]).strip()
                 prov = str(row.iloc[8]).strip()
                 
-                # Unisce l'indirizzo e rimuove doppi spazi se manca il civico
                 indirizzo_completo = f"{via} {civico} {cap} {citta} {prov}".strip()
                 indirizzo_completo = " ".join(indirizzo_completo.split()) 
                 
-                peso = str(row.iloc[10]).strip()
+                # LA MAGIA: Sostituiamo il punto con la virgola per ingannare Google Fogli
+                peso_grezzo = str(row.iloc[10]).strip()
+                peso = peso_grezzo.replace('.', ',')
                 
                 id_univoco = genera_id(destinatario, indirizzo_completo, peso, ddt)
                 
@@ -92,9 +90,11 @@ def elabora_dati(file_fbn, file_csv):
                 indirizzo_csv = f"{via_csv} {cap_csv} {localita_csv} {provincia_csv}".strip()
                 indirizzo_csv = " ".join(indirizzo_csv.split())
                 
-                peso_csv = str(row.get('PESO LORDO', row.get('Peso Lordo', '0'))).strip()
-                ddt_csv_grezzo = str(row.get('DDT', '')).strip()
+                # Applichiamo la stessa protezione anti-orologio anche al tuo file
+                peso_csv_grezzo = str(row.get('PESO LORDO', row.get('Peso Lordo', '0'))).strip()
+                peso_csv = peso_csv_grezzo.replace('.', ',')
                 
+                ddt_csv_grezzo = str(row.get('DDT', '')).strip()
                 ddt_csv = ddt_csv_grezzo if ddt_csv_grezzo.isdigit() else ""
                 
                 id_univoco_csv = genera_id(destinatario_csv, indirizzo_csv, peso_csv, ddt_csv)
@@ -157,24 +157,3 @@ def invia_dati_a_google(pacchi_finali):
         return successi
 
 # --- INTERFACCIA UTENTE ---
-st.set_page_config(page_title="Hub Logistica", page_icon="📦", layout="centered")
-st.title("📦 Hub Sincronizzazione Spedizioni")
-st.markdown("Carica le distinte dei corrieri per sincronizzarle istantaneamente con Google Fogli.")
-
-col1, col2 = st.columns(2)
-with col1:
-    # ORA ACCETTA EXCEL E CSV DA FBN!
-    file_fbn = st.file_uploader("📄 Carica File FBN (Excel/CSV)", type=["xlsx", "xls", "csv"])
-with col2:
-    file_csv_tuo = st.file_uploader("📊 Carica il tuo CSV", type=["csv"])
-
-if file_fbn is not None or file_csv_tuo is not None:
-    if st.button("🚀 Fondi e Scrivi su Google Fogli", use_container_width=True):
-        with st.spinner('Elaborazione super-veloce in corso...'):
-            pacchi_finali = elabora_dati(file_fbn, file_csv_tuo)
-            if not pacchi_finali:
-                st.warning("Non ho trovato dati validi da elaborare.")
-            else:
-                successi = invia_dati_a_google(pacchi_finali)
-                if successi:
-                    st.success(f"✅ Ottimo! {successi} spedizioni sincronizzate perfettamente al primo colpo!")
