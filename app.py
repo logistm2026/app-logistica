@@ -5,7 +5,7 @@ import gspread
 import hashlib
 import pytz
 from oauth2client.service_account import ServiceAccountCredentials
-from datetime import datetime # Aggiunto per gestire data e ora
+from datetime import datetime
 
 st.set_page_config(page_title="Hub Logistica", page_icon="📦", layout="centered")
 
@@ -32,7 +32,7 @@ def genera_id(destinatario, indirizzo, peso, ddt):
 def elabora_dati(file_fbn, file_csv):
     spedizioni = {}
     
-    # Creiamo un "timbro" del momento esatto in cui hai cliccato il pulsante (es. 20260604_1807)
+    # Creiamo un "timbro" del momento esatto in cui hai cliccato il pulsante
     fuso_italia = pytz.timezone('Europe/Rome')
     timestamp_run = datetime.now(fuso_italia).strftime("%Y%m%d_%H%M")
     contatore = 1
@@ -61,20 +61,23 @@ def elabora_dati(file_fbn, file_csv):
                 indirizzo_completo = f"{via} {civico} {cap} {citta} {prov}".strip()
                 indirizzo_completo = " ".join(indirizzo_completo.split()) 
                 
+                # ESTRAZIONE COLLI DA FBN (Indice 9)
+                colli = str(row.iloc[9]).strip() if len(row) > 9 else "1"
+                
                 peso_grezzo = str(row.iloc[10]).strip()
                 peso = peso_grezzo.replace('.', ',')
                 
                 id_univoco = genera_id(destinatario, indirizzo_completo, peso, ddt)
                 
-                # Generiamo la stringa progressiva per l'ordinamento di Autocrat
                 ordinamento = f"{timestamp_run}_{str(contatore).zfill(3)}"
                 contatore += 1
                 
                 spedizioni[id_univoco] = {
                     "ID_Pacco": id_univoco, 
-                    "Ordinamento": ordinamento, # LA NUOVA COLONNA
+                    "Ordinamento": ordinamento,
                     "Destinatario": destinatario, 
                     "Indirizzo": indirizzo_completo, 
+                    "Colli": colli, # <--- AGGIUNTO IL NUMERO DI COLLI
                     "Peso Lordo": peso, 
                     "DDT": ddt
                 }
@@ -101,6 +104,9 @@ def elabora_dati(file_fbn, file_csv):
                 indirizzo_csv = f"{via_csv} {cap_csv} {localita_csv} {provincia_csv}".strip()
                 indirizzo_csv = " ".join(indirizzo_csv.split())
                 
+                # ESTRAZIONE COLLI DAL TUO CSV
+                colli_csv = str(row.get('TOTALE COLLI', '1')).strip()
+                
                 peso_csv_grezzo = str(row.get('PESO LORDO', row.get('Peso Lordo', '0'))).strip()
                 peso_csv = peso_csv_grezzo.replace('.', ',')
                 
@@ -108,15 +114,15 @@ def elabora_dati(file_fbn, file_csv):
                 
                 id_univoco_csv = genera_id(destinatario_csv, indirizzo_csv, peso_csv, ddt_csv)
                 
-                # Continuiamo ad aumentare il contatore per non rompere l'ordine
                 ordinamento_csv = f"{timestamp_run}_{str(contatore).zfill(3)}"
                 contatore += 1
                 
                 spedizioni[id_univoco_csv] = {
                     "ID_Pacco": id_univoco_csv, 
-                    "Ordinamento": ordinamento_csv, # LA NUOVA COLONNA
+                    "Ordinamento": ordinamento_csv,
                     "Destinatario": destinatario_csv, 
                     "Indirizzo": indirizzo_csv, 
+                    "Colli": colli_csv, # <--- AGGIUNTO IL NUMERO DI COLLI
                     "Peso Lordo": peso_csv, 
                     "DDT": ddt_csv
                 }
@@ -135,9 +141,11 @@ def invia_dati_a_google(pacchi_finali):
     tutti_i_dati = foglio.get_all_records()
     intestazioni = foglio.row_values(1) 
     
-    # Se per caso non hai ancora la colonna "Ordinamento" sul foglio, eviterà errori
+    # Avvisi per le colonne
     if "Ordinamento" not in intestazioni:
         st.warning("⚠️ Promemoria: Ricordati di aggiungere una colonna chiamata 'Ordinamento' su Google Fogli!")
+    if "Colli" not in intestazioni:
+        st.warning("⚠️ Promemoria: Ricordati di aggiungere una colonna chiamata 'Colli' su Google Fogli!")
     
     mappa_righe = {str(riga.get("ID_Pacco", "")): idx + 2 for idx, riga in enumerate(tutti_i_dati)}
     
@@ -153,7 +161,7 @@ def invia_dati_a_google(pacchi_finali):
         if id_pacco in mappa_righe:
             riga_num = mappa_righe[id_pacco]
             da_aggiornare.append({
-                'range': f'A{riga_num}:E{riga_num}',  # ATTENZIONE: Se hai aggiunto una colonna, verifica che "E" copra tutto il range. Potresti dover mettere 'A{riga_num}:F{riga_num}' o 'Z{riga_num}'. Il codice di update potrebbe tagliare l'ultima colonna se non è dinamico.
+                'range': f'A{riga_num}:A{riga_num}', # Placeholder temporaneo, corretto nel blocco try
                 'values': [nuova_riga]
             })
         else:
@@ -163,7 +171,6 @@ def invia_dati_a_google(pacchi_finali):
     
     try:
         if da_aggiornare:
-            # FIX: Calcola dinamicamente la lettera finale della colonna in base a quante intestazioni hai
             lettera_finale = chr(ord('A') + len(intestazioni) - 1)
             da_aggiornare_fix = []
             for item in da_aggiornare:
