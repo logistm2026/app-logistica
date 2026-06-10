@@ -221,7 +221,7 @@ def invia_dati_a_google(pacchi_finali):
                 elif col_clean in ["data ora", "data_ora"]:
                     riga_st.append(ora_attuale_storico)
                 elif col_clean == "operatore":
-                    riga_st.append("Hub Sincronizzazione")
+                    riga_st.append("logist.m2026@gmail.com")
                 else:
                     riga_st.append("")
             da_inserire_storico.append(riga_st)
