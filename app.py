@@ -9,6 +9,18 @@ from datetime import datetime
 
 st.set_page_config(page_title="Hub Logistica", page_icon="📦", layout="centered")
 
+# --- NASCONDI INTERFACCIA STREAMLIT ---
+nascondi_menu = """
+    <style>
+    [data-testid="stToolbar"] {visibility: hidden !important;}
+    [data-testid="stHeader"] {visibility: hidden !important;}
+    [data-testid="stDecoration"] {visibility: hidden !important;}
+    footer {visibility: hidden !important;}
+    [data-testid="stFooter"] {visibility: hidden !important;}
+    </style>
+    """
+st.markdown(nascondi_menu, unsafe_allow_html=True)
+
 # --- CONNESSIONE A GOOGLE SHEETS ---
 def connetti_google_sheets():
     try:
@@ -16,8 +28,8 @@ def connetti_google_sheets():
         creds_dict = json.loads(st.secrets["google_key"])
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
         client = gspread.authorize(creds)
-        foglio = client.open("Logistica Tracking").worksheet("Spedizioni") 
-        return foglio
+        # Modificato per restituire l'intero documento anziché un singolo foglio
+        return client.open("Logistica Tracking") 
     except Exception as e:
         st.error(f"Errore di connessione a Google Fogli: {e}")
         return None
@@ -82,7 +94,7 @@ def elabora_dati(file_fbn, file_csv):
                     "DDT": ddt,
                     "Stato": "In Magazzino",
                     "Corriere": "logist.m2026@gmail.com",
-                    "Fornitore": "FBN" # <--- AGGIUNTO FORNITORE AUTOMATICO
+                    "Fornitore": "FBN"
                 }
         except Exception as e:
             st.error(f"Errore nella lettura del file FBN: {e}")
@@ -130,7 +142,7 @@ def elabora_dati(file_fbn, file_csv):
                     "DDT": ddt_csv,
                     "Stato": "In Magazzino",
                     "Corriere": "logist.m2026@gmail.com",
-                    "Fornitore": "FBN" # <--- AGGIUNTO FORNITORE AUTOMATICO
+                    "Fornitore": "FBN"
                 }
         except Exception as e:
              st.error(f"Errore nella lettura del tuo CSV: {e}")
@@ -139,15 +151,25 @@ def elabora_dati(file_fbn, file_csv):
 
 # --- SINCRONIZZAZIONE DIRETTA ---
 def invia_dati_a_google(pacchi_finali):
-    foglio = connetti_google_sheets()
-    if foglio is None: return False
+    doc_google = connetti_google_sheets()
+    if doc_google is None: return False
 
+    foglio_spedizioni = doc_google.worksheet("Spedizioni")
     st.write("Connesso al database. Sincronizzazione in blocco in corso...")
     
-    tutti_i_dati = foglio.get_all_records()
-    intestazioni = foglio.row_values(1) 
+    tutti_i_dati = foglio_spedizioni.get_all_records()
+    intestazioni = foglio_spedizioni.row_values(1) 
     
-    # Avvisi per le colonne
+    # Apertura e caricamento della tabella Storico per la registrazione automatica
+    try:
+        foglio_storico = doc_google.worksheet("Storico")
+        intestazioni_storico = foglio_storico.row_values(1)
+    except Exception:
+        foglio_storico = None
+        intestazioni_storico = []
+        st.warning("⚠️ Impossibile accedere alla scheda 'Storico'. Lo storico eventi non verrà registrato.")
+    
+    # Avvisi per le colonne della tabella principale
     if "Ordinamento" not in intestazioni:
         st.warning("⚠️ Promemoria: Ricordati di aggiungere una colonna chiamata 'Ordinamento' su Google Fogli!")
     if "Colli" not in intestazioni:
@@ -163,8 +185,13 @@ def invia_dati_a_google(pacchi_finali):
     
     da_aggiornare = []
     da_inserire = []
+    da_inserire_storico = []
     
-    for pacco in pacchi_finali:
+    # Configurazione data e ora per lo storico eventi
+    fuso_italia = pytz.timezone('Europe/Rome')
+    ora_attuale_storico = datetime.now(fuso_italia).strftime("%d/%m/%Y %H:%M:%S")
+    
+    for idx, pacco in enumerate(pacchi_finali):
         id_pacco = pacco["ID_Pacco"]
         nuova_riga = []
         for colonna in intestazioni:
@@ -179,9 +206,30 @@ def invia_dati_a_google(pacchi_finali):
         else:
             da_inserire.append(nuova_riga)
             
+        # --- GENERAZIONE RIGA PER LA TABELLA STORICO ---
+        if foglio_storico and intestazioni_storico:
+            id_storico = hashlib.md5(f"{id_pacco}-{ora_attuale_storico}-{idx}".encode()).hexdigest()[:8].upper()
+            riga_st = []
+            for col in intestazioni_storico:
+                col_clean = col.strip().lower().replace("_", " ")
+                if col_clean == "id storico":
+                    riga_st.append(id_storico)
+                elif col_clean == "id pacco":
+                    riga_st.append(id_pacco)
+                elif col_clean in ["stato registrato", "stato_registrato"]:
+                    riga_st.append("In Magazzino")
+                elif col_clean in ["data ora", "data_ora"]:
+                    riga_st.append(ora_attuale_storico)
+                elif col_clean == "operatore":
+                    riga_st.append("Hub Sincronizzazione")
+                else:
+                    riga_st.append("")
+            da_inserire_storico.append(riga_st)
+            
     successi = 0
     
     try:
+        # Scrittura aggiornamenti tabella Spedizioni
         if da_aggiornare:
             lettera_finale = chr(ord('A') + len(intestazioni) - 1)
             da_aggiornare_fix = []
@@ -191,12 +239,17 @@ def invia_dati_a_google(pacchi_finali):
                     'range': f'A{riga_n}:{lettera_finale}{riga_n}',
                     'values': item['values']
                 })
-            foglio.batch_update(da_aggiornare_fix, value_input_option="USER_ENTERED")
+            foglio_spedizioni.batch_update(da_aggiornare_fix, value_input_option="USER_ENTERED")
             successi += len(da_aggiornare_fix)
             
+        # Scrittura nuovi inserimenti tabella Spedizioni
         if da_inserire:
-            foglio.append_rows(da_inserire, value_input_option="USER_ENTERED", insert_data_option="INSERT_ROWS")
+            foglio_spedizioni.append_rows(da_inserire, value_input_option="USER_ENTERED", insert_data_option="INSERT_ROWS")
             successi += len(da_inserire)
+            
+        # --- SCRITTURA RIGHE NELLO STORICO ---
+        if da_inserire_storico:
+            foglio_storico.append_rows(da_inserire_storico, value_input_option="USER_ENTERED", insert_data_option="INSERT_ROWS")
             
         return successi
     except Exception as e:
