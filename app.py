@@ -81,7 +81,8 @@ def elabora_dati(file_fbn, file_csv):
                     "Peso Lordo": peso, 
                     "DDT": ddt,
                     "Stato": "In Magazzino",
-                    "Corriere": "logist.m2026@gmail.com" # <--- AGGIUNTO CORRIERE AUTOMATICO
+                    "Corriere": "logist.m2026@gmail.com",
+                    "Fornitore": "FBN" # <--- AGGIUNTO FORNITORE AUTOMATICO
                 }
         except Exception as e:
             st.error(f"Errore nella lettura del file FBN: {e}")
@@ -128,7 +129,8 @@ def elabora_dati(file_fbn, file_csv):
                     "Peso Lordo": peso_csv, 
                     "DDT": ddt_csv,
                     "Stato": "In Magazzino",
-                    "Corriere": "logist.m2026@gmail.com" # <--- AGGIUNTO CORRIERE AUTOMATICO
+                    "Corriere": "logist.m2026@gmail.com",
+                    "Fornitore": "FBN" # <--- AGGIUNTO FORNITORE AUTOMATICO
                 }
         except Exception as e:
              st.error(f"Errore nella lettura del tuo CSV: {e}")
@@ -154,6 +156,8 @@ def invia_dati_a_google(pacchi_finali):
         st.warning("⚠️ Promemoria: Ricordati di aggiungere una colonna chiamata 'Stato' su Google Fogli per lo stato automatico!")
     if "Corriere" not in intestazioni:
         st.warning("⚠️ Promemoria: Ricordati di aggiungere una colonna chiamata 'Corriere' su Google Fogli per il corriere automatico!")
+    if "Fornitore" not in intestazioni:
+        st.warning("⚠️ Promemoria: Ricordati di aggiungere una colonna chiamata 'Fornitore' su Google Fogli!")
     
     mappa_righe = {str(riga.get("ID_Pacco", "")): idx + 2 for idx, riga in enumerate(tutti_i_dati)}
     
