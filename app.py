@@ -77,9 +77,11 @@ def elabora_dati(file_fbn, file_csv):
                     "Ordinamento": ordinamento,
                     "Destinatario": destinatario, 
                     "Indirizzo": indirizzo_completo, 
-                    "Colli": colli, # <--- AGGIUNTO IL NUMERO DI COLLI
+                    "Colli": colli, 
                     "Peso Lordo": peso, 
-                    "DDT": ddt
+                    "DDT": ddt,
+                    "Stato": "In Magazzino",
+                    "Corriere": "logist.m2026@gmail.com" # <--- AGGIUNTO CORRIERE AUTOMATICO
                 }
         except Exception as e:
             st.error(f"Errore nella lettura del file FBN: {e}")
@@ -122,9 +124,11 @@ def elabora_dati(file_fbn, file_csv):
                     "Ordinamento": ordinamento_csv,
                     "Destinatario": destinatario_csv, 
                     "Indirizzo": indirizzo_csv, 
-                    "Colli": colli_csv, # <--- AGGIUNTO IL NUMERO DI COLLI
+                    "Colli": colli_csv, 
                     "Peso Lordo": peso_csv, 
-                    "DDT": ddt_csv
+                    "DDT": ddt_csv,
+                    "Stato": "In Magazzino",
+                    "Corriere": "logist.m2026@gmail.com" # <--- AGGIUNTO CORRIERE AUTOMATICO
                 }
         except Exception as e:
              st.error(f"Errore nella lettura del tuo CSV: {e}")
@@ -146,6 +150,10 @@ def invia_dati_a_google(pacchi_finali):
         st.warning("⚠️ Promemoria: Ricordati di aggiungere una colonna chiamata 'Ordinamento' su Google Fogli!")
     if "Colli" not in intestazioni:
         st.warning("⚠️ Promemoria: Ricordati di aggiungere una colonna chiamata 'Colli' su Google Fogli!")
+    if "Stato" not in intestazioni:
+        st.warning("⚠️ Promemoria: Ricordati di aggiungere una colonna chiamata 'Stato' su Google Fogli per lo stato automatico!")
+    if "Corriere" not in intestazioni:
+        st.warning("⚠️ Promemoria: Ricordati di aggiungere una colonna chiamata 'Corriere' su Google Fogli per il corriere automatico!")
     
     mappa_righe = {str(riga.get("ID_Pacco", "")): idx + 2 for idx, riga in enumerate(tutti_i_dati)}
     
@@ -161,7 +169,7 @@ def invia_dati_a_google(pacchi_finali):
         if id_pacco in mappa_righe:
             riga_num = mappa_righe[id_pacco]
             da_aggiornare.append({
-                'range': f'A{riga_num}:A{riga_num}', # Placeholder temporaneo, corretto nel blocco try
+                'range': f'A{riga_num}:A{riga_num}', 
                 'values': [nuova_riga]
             })
         else:
