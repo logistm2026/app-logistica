@@ -93,7 +93,7 @@ def elabora_dati(file_fbn, file_csv):
                     "Peso Lordo": peso, 
                     "DDT": ddt,
                     "Stato": "In Magazzino",
-                    "Corriere": "logist.m2026@gmail.com",
+                    "Email_Operatore": "logist.m2026@gmail.com",
                     "Fornitore": "FBN"
                 }
         except Exception as e:
@@ -141,7 +141,7 @@ def elabora_dati(file_fbn, file_csv):
                     "Peso Lordo": peso_csv, 
                     "DDT": ddt_csv,
                     "Stato": "In Magazzino",
-                    "Corriere": "logist.m2026@gmail.com",
+                    "Email_Operatore": "logist.m2026@gmail.com",
                     "Fornitore": "FBN"
                 }
         except Exception as e:
@@ -176,8 +176,8 @@ def invia_dati_a_google(pacchi_finali):
         st.warning("⚠️ Promemoria: Ricordati di aggiungere una colonna chiamata 'Colli' su Google Fogli!")
     if "Stato" not in intestazioni:
         st.warning("⚠️ Promemoria: Ricordati di aggiungere una colonna chiamata 'Stato' su Google Fogli per lo stato automatico!")
-    if "Corriere" not in intestazioni:
-        st.warning("⚠️ Promemoria: Ricordati di aggiungere una colonna chiamata 'Corriere' su Google Fogli per il corriere automatico!")
+    if "Email_Operatore" not in intestazioni:
+        st.warning("⚠️ Promemoria: Ricordati di aggiungere una colonna chiamata 'Email_Operatore' su Google Fogli per l'operatore automatico!")
     if "Fornitore" not in intestazioni:
         st.warning("⚠️ Promemoria: Ricordati di aggiungere una colonna chiamata 'Fornitore' su Google Fogli!")
     
