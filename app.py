@@ -33,23 +33,28 @@ def connetti_google_sheets():
         st.error(f"Errore di connessione a Google Fogli: {e}")
         return None
 
-# --- UTILITY: PULIZIA INFALLIBILE ---
+# --- UTILITY: PULIZIA INFALLIBILE TESTO ---
 def pulisci_testo(valore):
-    """Rimuove spazi vuoti e il '.0' fantasma aggiunto da Pandas"""
+    """Rimuove spazi vuoti e il '.0' aggiunto da Pandas sui numeri interi"""
     val = str(valore).strip().upper()
     if val.endswith('.0'):
         val = val[:-2]
     return val
 
+# --- UTILITY: NORMALIZZAZIONE DEL PESO (Punti e virgole eliminati dopo il pareggio) ---
 def normalizza_peso(peso_grezzo):
-    """Forza tutti i pesi ad avere esattamente lo stesso formato matematico"""
+    if pd.isna(peso_grezzo) or str(peso_grezzo).strip() == "":
+        return "000"
     try:
-        # Sostituisce la virgola con il punto per far capire a Python che è un numero
-        peso_clean = str(peso_grezzo).strip().replace(',', '.')
-        # Converte in decimale e lo fissa a 2 zeri (12,5 -> "12.50")
-        return f"{float(peso_clean):.2f}"
+        # 1. Trasformiamo la virgola in punto per farlo leggere a Python come numero
+        peso_float = float(str(peso_grezzo).strip().replace(',', '.'))
+        # 2. Forziamo esattamente 2 decimali fissi (es: 12.5 -> "12.50" | 12.50 -> "12.50")
+        peso_formattato = f"{peso_float:.2f}"
+        # 3. Eliminiamo il punto per ottenere il numero puro richiesto (es: "1250")
+        return peso_formattato.replace('.', '')
     except (ValueError, TypeError):
-        return pulisci_testo(peso_grezzo)
+        # Fallback se il peso contiene lettere o caratteri strani
+        return str(peso_grezzo).replace(',', '').replace('.', '').replace(' ', '').strip().upper()
 
 # --- FUNZIONE DI ELABORAZIONE ---
 def elabora_dati(file_fbn, file_csv, mappa_impronte_esistenti):
@@ -74,7 +79,6 @@ def elabora_dati(file_fbn, file_csv, mappa_impronte_esistenti):
                 df_fbn = pd.read_excel(file_fbn, dtype=str).fillna("")
 
             for index, row in df_fbn.iterrows():
-                # PULIZIA DATI FBN
                 destinatario = pulisci_testo(row.iloc[3])
                 if not destinatario: continue
                 
@@ -92,9 +96,9 @@ def elabora_dati(file_fbn, file_csv, mappa_impronte_esistenti):
                 colli = pulisci_testo(row.iloc[9]) if len(row) > 9 else "1"
                 
                 peso_grezzo = str(row.iloc[10]).strip()
-                peso_per_foglio = peso_grezzo.replace('.', ',') # Per vederlo bene su Google Sheets
+                peso_per_foglio = peso_grezzo.replace('.', ',') 
                 
-                # CREAZIONE IMPRONTA INFALLIBILE
+                # Calcolo impronta con peso normalizzato senza punteggiatura
                 peso_norm = normalizza_peso(peso_grezzo)
                 impronta_ram = f"{destinatario}-{ddt}-{peso_norm}"
                 
@@ -138,7 +142,6 @@ def elabora_dati(file_fbn, file_csv, mappa_impronte_esistenti):
         try:
             df_csv = pd.read_csv(file_csv, sep=';', dtype=str).fillna("")
             for index, row in df_csv.iterrows():
-                # PULIZIA DATI CSV
                 destinatario_csv = pulisci_testo(row.get('RAGIONE SOCIALE DESTINATARIO', ''))
                 if not destinatario_csv: continue
                 
@@ -157,10 +160,9 @@ def elabora_dati(file_fbn, file_csv, mappa_impronte_esistenti):
                 peso_csv_grezzo = str(row.get('PESO LORDO', row.get('Peso Lordo', '0'))).strip()
                 peso_csv_per_foglio = peso_csv_grezzo.replace('.', ',')
                 
+                peso_norm_csv = normalizza_peso(peso_csv_grezzo)
                 ddt_csv = pulisci_testo(row.get('DDT', ''))
                 
-                # CREAZIONE IMPRONTA INFALLIBILE
-                peso_norm_csv = normalizza_peso(peso_csv_grezzo)
                 impronta_ram_csv = f"{destinatario_csv}-{ddt_csv}-{peso_norm_csv}"
                 
                 if impronta_ram_csv not in contatori_run_csv:
@@ -322,6 +324,7 @@ if file_fbn is not None or file_csv_tuo is not None:
                         except:
                             giorni_trascorsi = 0
                         
+                        # SCUDO DEI 3 GIORNI
                         if giorni_trascorsi > 3:
                             continue
                             
@@ -331,6 +334,7 @@ if file_fbn is not None or file_csv_tuo is not None:
                         
                         if not dest or not ddt: continue
                         
+                        # Pareggio matematico e rimozione punteggiatura anche dal database remoto
                         peso_remoto_norm = normalizza_peso(peso_remoto)
                         impronta_ram = f"{dest}-{ddt}-{peso_remoto_norm}"
                         
