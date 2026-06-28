@@ -33,40 +33,37 @@ def connetti_google_sheets():
         st.error(f"Errore di connessione a Google Fogli: {e}")
         return None
 
-# --- UTILITY: PULIZIA TESTO SENZA DOPPI SPAZI ---
+# --- UTILITY: PULIZIA TESTO ---
 def pulisci_testo(valore):
-    """Rimuove spazi duplicati, spazi iniziali/finali e il '.0' dei numeri interi"""
+    """Rimuove spazi duplicati e il '.0' dei numeri interi letti come float"""
     val = " ".join(str(valore).strip().split()).upper()
     if val.endswith('.0'):
         val = val[:-2]
     return val
 
-# --- UTILITY: ELIMINAZIONE TOTALE DI PUNTI E VIRGOLE PER IL CONFRONTO ---
+# --- UTILITY: NORMALIZZAZIONE MATEMATICA DEL PESO ---
 def normalizza_peso(peso_grezzo):
     if pd.isna(peso_grezzo) or str(peso_grezzo).strip() == "":
         return "0"
     try:
-        # 1. Standardizziamo il separatore trasformando la virgola in punto
+        # Trasformiamo la virgola in punto per renderlo digeribile a Python
         peso_clean = str(peso_grezzo).strip().replace(',', '.')
-        # 2. Convertiamo in float (Python unifica automaticamente 12.5 e 12.50 in 12.5)
+        # Convertiamo in float (Python fonde automaticamente 12.5 e 12.50 nello stesso valore 12.5)
         peso_float = float(peso_clean)
-        # 3. Trasformiamo in stringa ed eliminiamo il punto decimale (es: 12.5 -> "125")
+        # Convertiamo in stringa e leviamo il punto decimale (es: 12.5 -> "125")
         return str(peso_float).replace('.', '')
     except (ValueError, TypeError):
-        # Fallback se il testo contiene caratteri non numerici
+        # Fallback di emergenza se ci sono lettere
         return str(peso_grezzo).replace(',', '').replace('.', '').replace(' ', '').strip().upper()
 
-# --- FUNZIONE DI ELABORAZIONE ---
-def elabora_dati(file_fbn, file_csv, mappa_impronte_esistenti):
+# --- FUNZIONE DI ELABORAZIONE CON CODA DI CONSUMO ---
+def elabora_dati(file_fbn, file_csv, righe_recenti_database):
     spedizioni = {}
     
     fuso_italia = pytz.timezone('Europe/Rome')
     data_oggi_assoluta = datetime.now(fuso_italia)
     timestamp_run = data_oggi_assoluta.strftime("%Y%m%d_%H%M")
     contatore = 1
-    
-    contatori_run_fbn = {}
-    contatori_run_csv = {}
 
     # ==========================================
     # 1. LETTURA FILE FBN
@@ -98,24 +95,22 @@ def elabora_dati(file_fbn, file_csv, mappa_impronte_esistenti):
                 peso_grezzo = str(row.iloc[10]).strip()
                 peso_per_foglio = peso_grezzo.replace('.', ',') 
                 
-                # Creazione Impronta senza punti e virgole
+                # Calcoliamo l'impronta corrente del file corrente
                 peso_norm = normalizza_peso(peso_grezzo)
-                impronta_ram = f"{destinatario}-{ddt}-{peso_norm}"
-                
-                if impronta_ram not in contatori_run_fbn:
-                    contatori_run_fbn[impronta_ram] = 0
-                else:
-                    contatori_run_fbn[impronta_ram] += 1
-                
-                impronta_univoca_istanza = f"{impronta_ram}_I{contatori_run_fbn[impronta_ram]}"
+                impronta_corrente = f"{destinatario}-{ddt}-{peso_norm}"
                 
                 id_pacco = None
                 
-                if impronta_univoca_istanza in mappa_impronte_esistenti:
-                    dati_remoti = mappa_impronte_esistenti[impronta_univoca_istanza]
-                    if dati_remoti["Stato"] in ["In Magazzino", ""]:
-                        id_pacco = dati_remoti["ID_Pacco"]
+                # Cerchiamo il primo match utile nella coda del database
+                for idx, riga_db in enumerate(righe_recenti_database):
+                    if riga_db["impronta"] == impronta_corrente:
+                        id_pacco = riga_db["ID_Pacco"]
+                        # CONSUMIAMO IL RECORD: lo eliminiamo dalla lista così la riga successiva
+                        # (multi-collo) non potrà riutilizzarlo ma passerà al record successivo!
+                        righe_recenti_database.pop(idx)
+                        break
                 
+                # Se non ha trovato riscontri recenti, genera un nuovo ID sequenziale orario
                 if id_pacco is None:
                     id_pacco = f"{timestamp_run}_{str(contatore).zfill(3)}"
                     contatore += 1
@@ -162,23 +157,16 @@ def elabora_dati(file_fbn, file_csv, mappa_impronte_esistenti):
                 
                 ddt_csv = pulisci_testo(row.get('DDT', ''))
                 
-                # Creazione Impronta senza punti e virgole per CSV
                 peso_norm_csv = normalizza_peso(peso_csv_grezzo)
-                impronta_ram_csv = f"{destinatario_csv}-{ddt_csv}-{peso_norm_csv}"
-                
-                if impronta_ram_csv not in contatori_run_csv:
-                    contatori_run_csv[impronta_ram_csv] = 0
-                else:
-                    contatori_run_csv[impronta_ram_csv] += 1
-                
-                impronta_univoca_istanza_csv = f"{impronta_ram_csv}_I{contatori_run_csv[impronta_ram_csv]}"
+                impronta_corrente_csv = f"{destinatario_csv}-{ddt_csv}-{peso_norm_csv}"
                 
                 id_pacco_csv = None
                 
-                if impronta_univoca_istanza_csv in mappa_impronte_esistenti:
-                    dati_remoti_csv = mappa_impronte_esistenti[impronta_univoca_istanza_csv]
-                    if dati_remoti_csv["Stato"] in ["In Magazzino", ""]:
-                        id_pacco_csv = dati_remoti_csv["ID_Pacco"]
+                for idx, riga_db in enumerate(righe_recenti_database):
+                    if riga_db["impronta"] == impronta_corrente_csv:
+                        id_pacco_csv = riga_db["ID_Pacco"]
+                        righe_recenti_database.pop(idx)
+                        break
                 
                 if id_pacco_csv is None:
                     id_pacco_csv = f"{timestamp_run}_{str(contatore).zfill(3)}"
@@ -303,7 +291,7 @@ with col2:
 if file_fbn is not None or file_csv_tuo is not None:
     if st.button("🚀 Fondi e Scrivi su Google Fogli", use_container_width=True):
         
-        mappa_impronte_esistenti = {}
+        righe_recenti_database = []
         with st.spinner('Analisi dello storico database in corso...'):
             doc_google = connetti_google_sheets()
             if doc_google:
@@ -313,7 +301,6 @@ if file_fbn is not None or file_csv_tuo is not None:
                     
                     fuso_italia = pytz.timezone('Europe/Rome')
                     data_oggi_assoluta = datetime.now(fuso_italia)
-                    contatori_chiave = {}
                     
                     for riga in tutti_i_dati_esistenti:
                         id_pacco_remoto = str(riga.get("ID_Pacco", ""))
@@ -325,8 +312,8 @@ if file_fbn is not None or file_csv_tuo is not None:
                         except:
                             giorni_trascorsi = 0
                         
-                        # SCUDO DEI 3 GIORNI
-                        if giorni_trascorsi > 3:
+                        # SCUDO DEI 3 GIORNI + STATO ATTIVO
+                        if giorni_trascorsi > 3 or str(riga.get("Stato", "")) not in ["In Magazzino", ""]:
                             continue
                             
                         dest = pulisci_testo(riga.get("Destinatario", ""))
@@ -335,26 +322,19 @@ if file_fbn is not None or file_csv_tuo is not None:
                         
                         if not dest or not ddt: continue
                         
-                        # Lettura e pulizia totale anche dal database remoto
+                        # Generazione impronta per la lista di coda
                         peso_remoto_norm = normalizza_peso(peso_remoto)
                         impronta_ram = f"{dest}-{ddt}-{peso_remoto_norm}"
                         
-                        if impronta_ram not in contatori_chiave:
-                            contatori_chiave[impronta_ram] = 0
-                        else:
-                            contatori_chiave[impronta_ram] += 1
-                            
-                        impronta_univoca_istanza = f"{impronta_ram}_I{contatori_chiave[impronta_ram]}"
-                        
-                        mappa_impronte_esistenti[impronta_univoca_istanza] = {
+                        righe_recenti_database.append({
                             "ID_Pacco": id_pacco_remoto,
-                            "Stato": str(riga.get("Stato", ""))
-                        }
+                            "impronta": impronta_ram
+                        })
                 except Exception as e:
                     st.warning("Errore durante l'analisi preliminare. Procedo come primo avvio.")
 
         with st.spinner('Elaborazione super-veloce in corso...'):
-            pacchi_finali = elabora_dati(file_fbn, file_csv_tuo, mappa_impronte_esistenti)
+            pacchi_finali = elabora_dati(file_fbn, file_csv_tuo, righe_recenti_database)
             
             if not pacchi_finali:
                 st.warning("Non ho trovato dati validi da elaborare.")
