@@ -33,27 +33,27 @@ def connetti_google_sheets():
         st.error(f"Errore di connessione a Google Fogli: {e}")
         return None
 
-# --- UTILITY: PULIZIA INFALLIBILE TESTO ---
+# --- UTILITY: PULIZIA TESTO SENZA DOPPI SPAZI ---
 def pulisci_testo(valore):
-    """Rimuove spazi vuoti e il '.0' aggiunto da Pandas sui numeri interi"""
-    val = str(valore).strip().upper()
+    """Rimuove spazi duplicati, spazi iniziali/finali e il '.0' dei numeri interi"""
+    val = " ".join(str(valore).strip().split()).upper()
     if val.endswith('.0'):
         val = val[:-2]
     return val
 
-# --- UTILITY: NORMALIZZAZIONE DEL PESO (Punti e virgole eliminati dopo il pareggio) ---
+# --- UTILITY: ELIMINAZIONE TOTALE DI PUNTI E VIRGOLE PER IL CONFRONTO ---
 def normalizza_peso(peso_grezzo):
     if pd.isna(peso_grezzo) or str(peso_grezzo).strip() == "":
-        return "000"
+        return "0"
     try:
-        # 1. Trasformiamo la virgola in punto per farlo leggere a Python come numero
-        peso_float = float(str(peso_grezzo).strip().replace(',', '.'))
-        # 2. Forziamo esattamente 2 decimali fissi (es: 12.5 -> "12.50" | 12.50 -> "12.50")
-        peso_formattato = f"{peso_float:.2f}"
-        # 3. Eliminiamo il punto per ottenere il numero puro richiesto (es: "1250")
-        return peso_formattato.replace('.', '')
+        # 1. Standardizziamo il separatore trasformando la virgola in punto
+        peso_clean = str(peso_grezzo).strip().replace(',', '.')
+        # 2. Convertiamo in float (Python unifica automaticamente 12.5 e 12.50 in 12.5)
+        peso_float = float(peso_clean)
+        # 3. Trasformiamo in stringa ed eliminiamo il punto decimale (es: 12.5 -> "125")
+        return str(peso_float).replace('.', '')
     except (ValueError, TypeError):
-        # Fallback se il peso contiene lettere o caratteri strani
+        # Fallback se il testo contiene caratteri non numerici
         return str(peso_grezzo).replace(',', '').replace('.', '').replace(' ', '').strip().upper()
 
 # --- FUNZIONE DI ELABORAZIONE ---
@@ -98,7 +98,7 @@ def elabora_dati(file_fbn, file_csv, mappa_impronte_esistenti):
                 peso_grezzo = str(row.iloc[10]).strip()
                 peso_per_foglio = peso_grezzo.replace('.', ',') 
                 
-                # Calcolo impronta con peso normalizzato senza punteggiatura
+                # Creazione Impronta senza punti e virgole
                 peso_norm = normalizza_peso(peso_grezzo)
                 impronta_ram = f"{destinatario}-{ddt}-{peso_norm}"
                 
@@ -160,9 +160,10 @@ def elabora_dati(file_fbn, file_csv, mappa_impronte_esistenti):
                 peso_csv_grezzo = str(row.get('PESO LORDO', row.get('Peso Lordo', '0'))).strip()
                 peso_csv_per_foglio = peso_csv_grezzo.replace('.', ',')
                 
-                peso_norm_csv = normalizza_peso(peso_csv_grezzo)
                 ddt_csv = pulisci_testo(row.get('DDT', ''))
                 
+                # Creazione Impronta senza punti e virgole per CSV
+                peso_norm_csv = normalizza_peso(peso_csv_grezzo)
                 impronta_ram_csv = f"{destinatario_csv}-{ddt_csv}-{peso_norm_csv}"
                 
                 if impronta_ram_csv not in contatori_run_csv:
@@ -334,7 +335,7 @@ if file_fbn is not None or file_csv_tuo is not None:
                         
                         if not dest or not ddt: continue
                         
-                        # Pareggio matematico e rimozione punteggiatura anche dal database remoto
+                        # Lettura e pulizia totale anche dal database remoto
                         peso_remoto_norm = normalizza_peso(peso_remoto)
                         impronta_ram = f"{dest}-{ddt}-{peso_remoto_norm}"
                         
