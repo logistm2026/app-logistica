@@ -33,11 +33,23 @@ def connetti_google_sheets():
         st.error(f"Errore di connessione a Google Fogli: {e}")
         return None
 
-# --- UTILITY: NORMALIZZAZIONE PESO (Elimina punti e virgole per il confronto) ---
+# --- UTILITY: PULIZIA INFALLIBILE ---
+def pulisci_testo(valore):
+    """Rimuove spazi vuoti e il '.0' fantasma aggiunto da Pandas"""
+    val = str(valore).strip().upper()
+    if val.endswith('.0'):
+        val = val[:-2]
+    return val
+
 def normalizza_peso(peso_grezzo):
-    # Converte in stringa e distrugge punti, virgole e spazi
-    # Es: "12,5" -> "125" | "12.5" -> "125" | " 12.5 " -> "125"
-    return str(peso_grezzo).replace(',', '').replace('.', '').replace(' ', '').strip()
+    """Forza tutti i pesi ad avere esattamente lo stesso formato matematico"""
+    try:
+        # Sostituisce la virgola con il punto per far capire a Python che è un numero
+        peso_clean = str(peso_grezzo).strip().replace(',', '.')
+        # Converte in decimale e lo fissa a 2 zeri (12,5 -> "12.50")
+        return f"{float(peso_clean):.2f}"
+    except (ValueError, TypeError):
+        return pulisci_testo(peso_grezzo)
 
 # --- FUNZIONE DI ELABORAZIONE ---
 def elabora_dati(file_fbn, file_csv, mappa_impronte_esistenti):
@@ -62,12 +74,14 @@ def elabora_dati(file_fbn, file_csv, mappa_impronte_esistenti):
                 df_fbn = pd.read_excel(file_fbn, dtype=str).fillna("")
 
             for index, row in df_fbn.iterrows():
-                destinatario = str(row.iloc[3]).strip()
+                # PULIZIA DATI FBN
+                destinatario = pulisci_testo(row.iloc[3])
                 if not destinatario: continue
                 
-                ddt = str(row.iloc[0]).strip()
+                ddt = pulisci_testo(row.iloc[0])
+                
                 via = str(row.iloc[4]).strip()
-                civico = str(row.iloc[5]).strip()
+                civico = pulisci_testo(row.iloc[5])
                 cap = str(row.iloc[6]).strip().zfill(5) if str(row.iloc[6]).strip() else ""
                 citta = str(row.iloc[7]).strip()
                 prov = str(row.iloc[8]).strip()
@@ -75,16 +89,14 @@ def elabora_dati(file_fbn, file_csv, mappa_impronte_esistenti):
                 indirizzo_completo = f"{via} {civico} {cap} {citta} {prov}".strip()
                 indirizzo_completo = " ".join(indirizzo_completo.split()) 
                 
-                colli = str(row.iloc[9]).strip() if len(row) > 9 else "1"
+                colli = pulisci_testo(row.iloc[9]) if len(row) > 9 else "1"
                 
                 peso_grezzo = str(row.iloc[10]).strip()
-                peso = peso_grezzo.replace('.', ',') 
+                peso_per_foglio = peso_grezzo.replace('.', ',') # Per vederlo bene su Google Sheets
                 
-                # Applichiamo la rimozione di punti e virgole per l'impronta
+                # CREAZIONE IMPRONTA INFALLIBILE
                 peso_norm = normalizza_peso(peso_grezzo)
-                
-                # L'impronta digitale ora include il peso senza punteggiatura
-                impronta_ram = f"{str(destinatario).strip().upper()}-{str(ddt).strip().upper()}-{peso_norm}"
+                impronta_ram = f"{destinatario}-{ddt}-{peso_norm}"
                 
                 if impronta_ram not in contatori_run_fbn:
                     contatori_run_fbn[impronta_ram] = 0
@@ -110,7 +122,7 @@ def elabora_dati(file_fbn, file_csv, mappa_impronte_esistenti):
                     "Destinatario": destinatario, 
                     "Indirizzo": indirizzo_completo, 
                     "Colli": colli, 
-                    "Peso Lordo": peso, 
+                    "Peso Lordo": peso_per_foglio, 
                     "DDT": ddt,
                     "Stato": "In Magazzino",
                     "Email_Operatore": "logist.m2026@gmail.com",
@@ -126,11 +138,12 @@ def elabora_dati(file_fbn, file_csv, mappa_impronte_esistenti):
         try:
             df_csv = pd.read_csv(file_csv, sep=';', dtype=str).fillna("")
             for index, row in df_csv.iterrows():
-                destinatario_csv = str(row.get('RAGIONE SOCIALE DESTINATARIO', '')).strip()
-                if destinatario_csv == "": continue
+                # PULIZIA DATI CSV
+                destinatario_csv = pulisci_testo(row.get('RAGIONE SOCIALE DESTINATARIO', ''))
+                if not destinatario_csv: continue
                 
                 via_csv = str(row.get('INDIRIZZO', '')).strip()
-                cap_grezzo = str(row.get('CAP', '')).strip()
+                cap_grezzo = pulisci_testo(row.get('CAP', ''))
                 localita_csv = str(row.get('LOCALITA', '')).strip()
                 provincia_csv = str(row.get('PROVINCIA', '')).strip()
                 
@@ -139,16 +152,16 @@ def elabora_dati(file_fbn, file_csv, mappa_impronte_esistenti):
                 indirizzo_csv = f"{via_csv} {cap_csv} {localita_csv} {provincia_csv}".strip()
                 indirizzo_csv = " ".join(indirizzo_csv.split())
                 
-                colli_csv = str(row.get('TOTALE COLLI', '1')).strip()
+                colli_csv = pulisci_testo(row.get('TOTALE COLLI', '1'))
                 
                 peso_csv_grezzo = str(row.get('PESO LORDO', row.get('Peso Lordo', '0'))).strip()
-                peso_csv = peso_csv_grezzo.replace('.', ',')
+                peso_csv_per_foglio = peso_csv_grezzo.replace('.', ',')
                 
-                # Applichiamo la rimozione di punti e virgole per l'impronta
+                ddt_csv = pulisci_testo(row.get('DDT', ''))
+                
+                # CREAZIONE IMPRONTA INFALLIBILE
                 peso_norm_csv = normalizza_peso(peso_csv_grezzo)
-                ddt_csv = str(row.get('DDT', '')).strip()
-                
-                impronta_ram_csv = f"{str(destinatario_csv).strip().upper()}-{str(ddt_csv).strip().upper()}-{peso_norm_csv}"
+                impronta_ram_csv = f"{destinatario_csv}-{ddt_csv}-{peso_norm_csv}"
                 
                 if impronta_ram_csv not in contatori_run_csv:
                     contatori_run_csv[impronta_ram_csv] = 0
@@ -174,7 +187,7 @@ def elabora_dati(file_fbn, file_csv, mappa_impronte_esistenti):
                     "Destinatario": destinatario_csv, 
                     "Indirizzo": indirizzo_csv, 
                     "Colli": colli_csv, 
-                    "Peso Lordo": peso_csv, 
+                    "Peso Lordo": peso_csv_per_foglio, 
                     "DDT": ddt_csv,
                     "Stato": "In Magazzino",
                     "Email_Operatore": "logist.m2026@gmail.com",
@@ -309,17 +322,15 @@ if file_fbn is not None or file_csv_tuo is not None:
                         except:
                             giorni_trascorsi = 0
                         
-                        # SCUDO DEI 3 GIORNI
                         if giorni_trascorsi > 3:
                             continue
                             
-                        dest = str(riga.get("Destinatario", "")).strip().upper()
-                        ddt = str(riga.get("DDT", "")).strip().upper()
+                        dest = pulisci_testo(riga.get("Destinatario", ""))
+                        ddt = pulisci_testo(riga.get("DDT", ""))
                         peso_remoto = str(riga.get("Peso Lordo", ""))
                         
                         if not dest or not ddt: continue
                         
-                        # Anche il database remoto viene letto rimuovendo punti e virgole
                         peso_remoto_norm = normalizza_peso(peso_remoto)
                         impronta_ram = f"{dest}-{ddt}-{peso_remoto_norm}"
                         
