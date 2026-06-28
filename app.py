@@ -41,22 +41,7 @@ def pulisci_testo(valore):
         val = val[:-2]
     return val
 
-# --- UTILITY: NORMALIZZAZIONE MATEMATICA DEL PESO ---
-def normalizza_peso(peso_grezzo):
-    if pd.isna(peso_grezzo) or str(peso_grezzo).strip() == "":
-        return "0"
-    try:
-        # Trasformiamo la virgola in punto per renderlo digeribile a Python
-        peso_clean = str(peso_grezzo).strip().replace(',', '.')
-        # Convertiamo in float (Python fonde automaticamente 12.5 e 12.50 nello stesso valore 12.5)
-        peso_float = float(peso_clean)
-        # Convertiamo in stringa e leviamo il punto decimale (es: 12.5 -> "125")
-        return str(peso_float).replace('.', '')
-    except (ValueError, TypeError):
-        # Fallback di emergenza se ci sono lettere
-        return str(peso_grezzo).replace(',', '').replace('.', '').replace(' ', '').strip().upper()
-
-# --- FUNZIONE DI ELABORAZIONE CON CODA DI CONSUMO ---
+# --- FUNZIONE DI ELABORAZIONE (CONTROLLO SOLO SU DESTINATARIO E DDT) ---
 def elabora_dati(file_fbn, file_csv, righe_recenti_database):
     spedizioni = {}
     
@@ -95,22 +80,19 @@ def elabora_dati(file_fbn, file_csv, righe_recenti_database):
                 peso_grezzo = str(row.iloc[10]).strip()
                 peso_per_foglio = peso_grezzo.replace('.', ',') 
                 
-                # Calcoliamo l'impronta corrente del file corrente
-                peso_norm = normalizza_peso(peso_grezzo)
-                impronta_corrente = f"{destinatario}-{ddt}-{peso_norm}"
+                # IMPRONTA BLINDATA: Solo Destinatario e DDT
+                impronta_corrente = f"{destinatario}-{ddt}"
                 
                 id_pacco = None
                 
-                # Cerchiamo il primo match utile nella coda del database
+                # Coda di Consumo
                 for idx, riga_db in enumerate(righe_recenti_database):
                     if riga_db["impronta"] == impronta_corrente:
                         id_pacco = riga_db["ID_Pacco"]
-                        # CONSUMIAMO IL RECORD: lo eliminiamo dalla lista così la riga successiva
-                        # (multi-collo) non potrà riutilizzarlo ma passerà al record successivo!
+                        # Consuma il record per gestire correttamente i multi-collo
                         righe_recenti_database.pop(idx)
                         break
                 
-                # Se non ha trovato riscontri recenti, genera un nuovo ID sequenziale orario
                 if id_pacco is None:
                     id_pacco = f"{timestamp_run}_{str(contatore).zfill(3)}"
                     contatore += 1
@@ -157,8 +139,8 @@ def elabora_dati(file_fbn, file_csv, righe_recenti_database):
                 
                 ddt_csv = pulisci_testo(row.get('DDT', ''))
                 
-                peso_norm_csv = normalizza_peso(peso_csv_grezzo)
-                impronta_corrente_csv = f"{destinatario_csv}-{ddt_csv}-{peso_norm_csv}"
+                # IMPRONTA BLINDATA CSV
+                impronta_corrente_csv = f"{destinatario_csv}-{ddt_csv}"
                 
                 id_pacco_csv = None
                 
@@ -318,13 +300,11 @@ if file_fbn is not None or file_csv_tuo is not None:
                             
                         dest = pulisci_testo(riga.get("Destinatario", ""))
                         ddt = pulisci_testo(riga.get("DDT", ""))
-                        peso_remoto = str(riga.get("Peso Lordo", ""))
                         
                         if not dest or not ddt: continue
                         
-                        # Generazione impronta per la lista di coda
-                        peso_remoto_norm = normalizza_peso(peso_remoto)
-                        impronta_ram = f"{dest}-{ddt}-{peso_remoto_norm}"
+                        # Impronta per la lista di coda: Solo Destinatario e DDT
+                        impronta_ram = f"{dest}-{ddt}"
                         
                         righe_recenti_database.append({
                             "ID_Pacco": id_pacco_remoto,
