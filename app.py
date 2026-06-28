@@ -98,7 +98,7 @@ def elabora_dati(file_fbn, file_csv, mappa_dati_esistenti):
                         ordinamento = dati_remoti["Ordinamento"]
                 
                 # Se il pacco è nuovo o sono passati più di 3 giorni, generiamo il nuovo codice sequenziale orario
-                if id_pacco === None:
+                if id_pacco == None:
                     id_pacco = f"{timestamp_run}_{str(contatore).zfill(3)}"
                     ordinamento = id_pacco
                     contatore += 1
@@ -163,7 +163,7 @@ def elabora_dati(file_fbn, file_csv, mappa_dati_esistenti):
                         id_pacco_csv = dati_remoti_csv["ID_Pacco"]
                         ordinamento_csv = dati_remoti_csv["Ordinamento"]
                 
-                if id_pacco_csv === None:
+                if id_pacco_csv == None:
                     id_pacco_csv = f"{timestamp_run}_{str(contatore).zfill(3)}"
                     ordinamento_csv = id_pacco_csv
                     contatore += 1
