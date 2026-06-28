@@ -33,6 +33,17 @@ def connetti_google_sheets():
         st.error(f"Errore di connessione a Google Fogli: {e}")
         return None
 
+# --- UTILITY: NORMALIZZAZIONE PESO (Risolve il bug punto/virgola) ---
+def normalizza_peso(peso_grezzo):
+    try:
+        # Trasforma tutto in stringa, pulisce gli spazi e standardizza la virgola in punto
+        peso_clean = str(peso_grezzo).strip().replace(',', '.')
+        # Converte in float e formatta con esattamente 2 decimali (es. "12.50")
+        return "{:.2f}".format(float(peso_clean))
+    except (ValueError, TypeError):
+        # Fallback di sicurezza se il dato non è numerico
+        return str(peso_grezzo).strip().replace(' ', '')
+
 # --- FUNZIONE DI ELABORAZIONE ---
 def elabora_dati(file_fbn, file_csv, mappa_impronte_esistenti):
     spedizioni = {}
@@ -72,10 +83,13 @@ def elabora_dati(file_fbn, file_csv, mappa_impronte_esistenti):
                 colli = str(row.iloc[9]).strip() if len(row) > 9 else "1"
                 
                 peso_grezzo = str(row.iloc[10]).strip()
-                peso = peso_grezzo.replace('.', ',')
+                peso = peso_grezzo.replace('.', ',') # Mantiene la virgola visiva per il foglio Google
                 
-                # Generiamo l'impronta digitale virtuale (RAM) per il match anti-duplicato
-                impronta_ram = f"{str(destinatario).strip().upper()}-{str(ddt).strip().upper()}"
+                # Applichiamo la normalizzazione del peso per l'impronta di confronto
+                peso_norm = normalizza_peso(peso_grezzo)
+                
+                # L'impronta digitale ora include anche il peso normalizzato
+                impronta_ram = f"{str(destinatario).strip().upper()}-{str(ddt).strip().upper()}-{peso_norm}"
                 
                 if impronta_ram not in contatori_run_fbn:
                     contatori_run_fbn[impronta_ram] = 0
@@ -86,21 +100,18 @@ def elabora_dati(file_fbn, file_csv, mappa_impronte_esistenti):
                 
                 id_pacco = None
                 
-                # Se l'impronta digitale esiste già sul foglio ed è recente (< 3 giorni)
                 if impronta_univoca_istanza in mappa_impronte_esistenti:
                     dati_remoti = mappa_impronte_esistenti[impronta_univoca_istanza]
                     if dati_remoti["Stato"] in ["In Magazzino", ""]:
-                        # Recuperiamo il VECCHIO ID sequenziale orario per sovrascrivere la riga corretta!
                         id_pacco = dati_remoti["ID_Pacco"]
                 
-                # Se il pacco è nuovo (o sono passati più di 3 giorni), generiamo l'ID sequenziale pulito
                 if id_pacco is None:
                     id_pacco = f"{timestamp_run}_{str(contatore).zfill(3)}"
                     contatore += 1
                 
                 spedizioni[id_pacco] = {
                     "ID_Pacco": id_pacco, 
-                    "Ordinamento": id_pacco, # ID e Ordinamento ora coincidono perfettamente
+                    "Ordinamento": id_pacco,
                     "Destinatario": destinatario, 
                     "Indirizzo": indirizzo_completo, 
                     "Colli": colli, 
@@ -138,9 +149,11 @@ def elabora_dati(file_fbn, file_csv, mappa_impronte_esistenti):
                 peso_csv_grezzo = str(row.get('PESO LORDO', row.get('Peso Lordo', '0'))).strip()
                 peso_csv = peso_csv_grezzo.replace('.', ',')
                 
+                peso_norm_csv = normalizza_peso(peso_csv_grezzo)
                 ddt_csv = str(row.get('DDT', '')).strip()
                 
-                impronta_ram_csv = f"{str(destinatario_csv).strip().upper()}-{str(ddt_csv).strip().upper()}"
+                # Impronta digitale con peso normalizzato per il CSV
+                impronta_ram_csv = f"{str(destinatario_csv).strip().upper()}-{str(ddt_csv).strip().upper()}-{peso_norm_csv}"
                 
                 if impronta_ram_csv not in contatori_run_csv:
                     contatori_run_csv[impronta_ram_csv] = 0
@@ -294,7 +307,6 @@ if file_fbn is not None or file_csv_tuo is not None:
                     for riga in tutti_i_dati_esistenti:
                         id_pacco_remoto = str(riga.get("ID_Pacco", ""))
                         
-                        # Calcoliamo i giorni in base all'ID_Pacco stesso che ora contiene la data di run
                         try:
                             data_remota_str = id_pacco_remoto.split("_")[0]
                             data_remota_obj = datetime.strptime(data_remota_str, "%Y%m%d").replace(tzinfo=fuso_italia)
@@ -308,10 +320,13 @@ if file_fbn is not None or file_csv_tuo is not None:
                             
                         dest = str(riga.get("Destinatario", "")).strip().upper()
                         ddt = str(riga.get("DDT", "")).strip().upper()
+                        peso_remoto = str(riga.get("Peso Lordo", ""))
                         
                         if not dest or not ddt: continue
                         
-                        impronta_ram = f"{dest}-{ddt}"
+                        # Normalizziamo il peso letto dal database prima di creare l'impronta di controllo
+                        peso_remoto_norm = normalizza_peso(peso_remoto)
+                        impronta_ram = f"{dest}-{ddt}-{peso_remoto_norm}"
                         
                         if impronta_ram not in contatori_chiave:
                             contatori_chiave[impronta_ram] = 0
@@ -325,7 +340,7 @@ if file_fbn is not None or file_csv_tuo is not None:
                             "Stato": str(riga.get("Stato", ""))
                         }
                 except Exception as e:
-                    st.warning("Errore durante l'analisipreliminare. Procedo come primo avvio.")
+                    st.warning("Errore durante l'analisi preliminare. Procedo come primo avvio.")
 
         with st.spinner('Elaborazione super-veloce in corso...'):
             pacchi_finali = elabora_dati(file_fbn, file_csv_tuo, mappa_impronte_esistenti)
