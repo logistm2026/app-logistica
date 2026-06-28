@@ -33,16 +33,11 @@ def connetti_google_sheets():
         st.error(f"Errore di connessione a Google Fogli: {e}")
         return None
 
-# --- UTILITY: NORMALIZZAZIONE PESO (Risolve il bug punto/virgola) ---
+# --- UTILITY: NORMALIZZAZIONE PESO (Elimina punti e virgole per il confronto) ---
 def normalizza_peso(peso_grezzo):
-    try:
-        # Trasforma tutto in stringa, pulisce gli spazi e standardizza la virgola in punto
-        peso_clean = str(peso_grezzo).strip().replace(',', '.')
-        # Converte in float e formatta con esattamente 2 decimali (es. "12.50")
-        return "{:.2f}".format(float(peso_clean))
-    except (ValueError, TypeError):
-        # Fallback di sicurezza se il dato non è numerico
-        return str(peso_grezzo).strip().replace(' ', '')
+    # Converte in stringa e distrugge punti, virgole e spazi
+    # Es: "12,5" -> "125" | "12.5" -> "125" | " 12.5 " -> "125"
+    return str(peso_grezzo).replace(',', '').replace('.', '').replace(' ', '').strip()
 
 # --- FUNZIONE DI ELABORAZIONE ---
 def elabora_dati(file_fbn, file_csv, mappa_impronte_esistenti):
@@ -83,12 +78,12 @@ def elabora_dati(file_fbn, file_csv, mappa_impronte_esistenti):
                 colli = str(row.iloc[9]).strip() if len(row) > 9 else "1"
                 
                 peso_grezzo = str(row.iloc[10]).strip()
-                peso = peso_grezzo.replace('.', ',') # Mantiene la virgola visiva per il foglio Google
+                peso = peso_grezzo.replace('.', ',') 
                 
-                # Applichiamo la normalizzazione del peso per l'impronta di confronto
+                # Applichiamo la rimozione di punti e virgole per l'impronta
                 peso_norm = normalizza_peso(peso_grezzo)
                 
-                # L'impronta digitale ora include anche il peso normalizzato
+                # L'impronta digitale ora include il peso senza punteggiatura
                 impronta_ram = f"{str(destinatario).strip().upper()}-{str(ddt).strip().upper()}-{peso_norm}"
                 
                 if impronta_ram not in contatori_run_fbn:
@@ -149,10 +144,10 @@ def elabora_dati(file_fbn, file_csv, mappa_impronte_esistenti):
                 peso_csv_grezzo = str(row.get('PESO LORDO', row.get('Peso Lordo', '0'))).strip()
                 peso_csv = peso_csv_grezzo.replace('.', ',')
                 
+                # Applichiamo la rimozione di punti e virgole per l'impronta
                 peso_norm_csv = normalizza_peso(peso_csv_grezzo)
                 ddt_csv = str(row.get('DDT', '')).strip()
                 
-                # Impronta digitale con peso normalizzato per il CSV
                 impronta_ram_csv = f"{str(destinatario_csv).strip().upper()}-{str(ddt_csv).strip().upper()}-{peso_norm_csv}"
                 
                 if impronta_ram_csv not in contatori_run_csv:
@@ -324,7 +319,7 @@ if file_fbn is not None or file_csv_tuo is not None:
                         
                         if not dest or not ddt: continue
                         
-                        # Normalizziamo il peso letto dal database prima di creare l'impronta di controllo
+                        # Anche il database remoto viene letto rimuovendo punti e virgole
                         peso_remoto_norm = normalizza_peso(peso_remoto)
                         impronta_ram = f"{dest}-{ddt}-{peso_remoto_norm}"
                         
