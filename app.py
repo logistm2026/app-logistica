@@ -33,19 +33,18 @@ def connetti_google_sheets():
         st.error(f"Errore di connessione a Google Fogli: {e}")
         return None
 
-# --- GENERATORE ID UNIVOCO BASE ---
-def genera_id(destinatario, indirizzo, peso, ddt):
-    stringa_base = f"{str(destinatario).strip().upper()}-{str(indirizzo).strip().upper()}-{str(peso).strip()}-{str(ddt).strip().upper()}"
-    codice_univoco = hashlib.md5(stringa_base.encode()).hexdigest()[:8].upper()
-    return codice_univoco
-
-# --- FUNZIONE DI ELABORAZIONE MODIFICATA (STRADA 2) ---
-def elabora_dati(file_fbn, file_csv, mappa_stati_esistenti):
+# --- FUNZIONE DI ELABORAZIONE CON LOGICA TEMPORALE ---
+def elabora_dati(file_fbn, file_csv, mappa_dati_esistenti):
     spedizioni = {}
     
     fuso_italia = pytz.timezone('Europe/Rome')
-    timestamp_run = datetime.now(fuso_italia).strftime("%Y%m%d_%H%M")
+    data_oggi_assoluta = datetime.now(fuso_italia)
+    timestamp_run = data_oggi_assoluta.strftime("%Y%m%d_%H%M")
     contatore = 1
+    
+    # Dizionari locali per gestire la numerazione progressiva dei multi-collo nello stesso file
+    contatori_run_fbn = {}
+    contatori_run_csv = {}
 
     # ==========================================
     # 1. LETTURA FILE FBN
@@ -76,22 +75,36 @@ def elabora_dati(file_fbn, file_csv, mappa_stati_esistenti):
                 peso_grezzo = str(row.iloc[10]).strip()
                 peso = peso_grezzo.replace('.', ',')
                 
-                # Generazione ID Base
-                id_univoco_base = genera_id(destinatario, indirizzo_completo, peso, ddt)
+                # Creiamo la chiave dei dati fisici del pacco per intercettare i duplicati
+                chiave_base = f"{str(destinatario).strip().upper()}-{str(indirizzo_completo).strip().upper()}-{str(peso).strip()}-{str(ddt).strip().upper()}"
                 
-                # CONTROLLO SOVRASCRITTURA STORICO (Logica Strada 2)
-                id_univoco = id_univoco_base
-                versione = 2
-                # Se l'ID esiste e lo stato non è "In Magazzino", è un ordine vecchio. Creiamo una nuova versione.
-                while id_univoco in mappa_stati_esistenti and mappa_stati_esistenti[id_univoco] not in ["In Magazzino", ""]:
-                    id_univoco = f"{id_univoco_base}_V{versione}"
-                    versione += 1
+                # Gestione dell'indice di istanza per i multi-collo nello stesso file
+                if chiave_base not in contatori_run_fbn:
+                    contatori_run_fbn[chiave_base] = 0
+                else:
+                    contatori_run_fbn[chiave_base] += 1
                 
-                ordinamento = f"{timestamp_run}_{str(contatore).zfill(3)}"
-                contatore += 1
+                chiave_univoca_istanza = f"{chiave_base}_I{contatori_run_fbn[chiave_base]}"
                 
-                spedizioni[id_univoco] = {
-                    "ID_Pacco": id_univoco, 
+                id_pacco = None
+                ordinamento = None
+                
+                # Se questa specifica istanza del pacco esiste già ed è recente (filtro effettuato a monte)
+                if chiave_univoca_istanza in mappa_dati_esistenti:
+                    dati_remoti = mappa_dati_esistenti[chiave_univoca_istanza]
+                    # Se lo stato sul foglio permette ancora la modifica
+                    if dati_remoti["Stato"] in ["In Magazzino", ""]:
+                        id_pacco = dati_remoti["ID_Pacco"]
+                        ordinamento = dati_remoti["Ordinamento"]
+                
+                # Se il pacco è nuovo o sono passati più di 3 giorni, generiamo il nuovo codice sequenziale orario
+                if id_pacco === None:
+                    id_pacco = f"{timestamp_run}_{str(contatore).zfill(3)}"
+                    ordinamento = id_pacco
+                    contatore += 1
+                
+                spedizioni[id_pacco] = {
+                    "ID_Pacco": id_pacco, 
                     "Ordinamento": ordinamento,
                     "Destinatario": destinatario, 
                     "Indirizzo": indirizzo_completo, 
@@ -132,21 +145,31 @@ def elabora_dati(file_fbn, file_csv, mappa_stati_esistenti):
                 
                 ddt_csv = str(row.get('DDT', '')).strip()
                 
-                # Generazione ID Base per CSV
-                id_univoco_base_csv = genera_id(destinatario_csv, indirizzo_csv, peso_csv, ddt_csv)
+                chiave_base_csv = f"{str(destinatario_csv).strip().upper()}-{str(indirizzo_csv).strip().upper()}-{str(peso_csv).strip()}-{str(ddt_csv).strip().upper()}"
                 
-                # CONTROLLO SOVRASCRITTURA STORICO (Logica Strada 2)
-                id_univoco_csv = id_univoco_base_csv
-                versione = 2
-                while id_univoco_csv in mappa_stati_esistenti and mappa_stati_esistenti[id_univoco_csv] not in ["In Magazzino", ""]:
-                    id_univoco_csv = f"{id_univoco_base_csv}_V{versione}"
-                    versione += 1
+                if chiave_base_csv not in contatori_run_csv:
+                    contatori_run_csv[chiave_base_csv] = 0
+                else:
+                    contatori_run_csv[chiave_base_csv] += 1
                 
-                ordinamento_csv = f"{timestamp_run}_{str(contatore).zfill(3)}"
-                contatore += 1
+                chiave_univoca_istanza_csv = f"{chiave_base_csv}_I{contatori_run_csv[chiave_base_csv]}"
                 
-                spedizioni[id_univoco_csv] = {
-                    "ID_Pacco": id_univoco_csv, 
+                id_pacco_csv = None
+                ordinamento_csv = None
+                
+                if chiave_univoca_istanza_csv in mappa_dati_esistenti:
+                    dati_remoti_csv = mappa_dati_esistenti[chiave_univoca_istanza_csv]
+                    if dati_remoti_csv["Stato"] in ["In Magazzino", ""]:
+                        id_pacco_csv = dati_remoti_csv["ID_Pacco"]
+                        ordinamento_csv = dati_remoti_csv["Ordinamento"]
+                
+                if id_pacco_csv === None:
+                    id_pacco_csv = f"{timestamp_run}_{str(contatore).zfill(3)}"
+                    ordinamento_csv = id_pacco_csv
+                    contatore += 1
+                
+                spedizioni[id_pacco_csv] = {
+                    "ID_Pacco": id_pacco_csv, 
                     "Ordinamento": ordinamento_csv,
                     "Destinatario": destinatario_csv, 
                     "Indirizzo": indirizzo_csv, 
@@ -264,23 +287,58 @@ with col2:
 if file_fbn is not None or file_csv_tuo is not None:
     if st.button("🚀 Fondi e Scrivi su Google Fogli", use_container_width=True):
         
-        # 1. LETTURA STATO PRECEDENTE DAL DATABASE
-        mappa_stati_esistenti = {}
+        mappa_dati_esistenti = {}
         with st.spinner('Analisi dello storico database in corso...'):
             doc_google = connetti_google_sheets()
             if doc_google:
                 try:
                     foglio_spedizioni = doc_google.worksheet("Spedizioni")
                     tutti_i_dati_esistenti = foglio_spedizioni.get_all_records()
-                    # Creiamo la mappa leggendo gli ID e lo Stato attuale
-                    mappa_stati_esistenti = {str(riga.get("ID_Pacco", "")): str(riga.get("Stato", "")) for riga in tutti_i_dati_esistenti}
+                    
+                    fuso_italia = pytz.timezone('Europe/Rome')
+                    data_oggi_assoluta = datetime.now(fuso_italia)
+                    contatori_chiave = {}
+                    
+                    for riga in tutti_i_dati_esistenti:
+                        ordinamento_remoto = str(riga.get("Ordinamento", ""))
+                        
+                        # Calcoliamo i giorni trascorsi dall'inserimento di questa riga
+                        try:
+                            data_remota_str = str(ordinamento_remoto).split("_")[0]
+                            data_remota_obj = datetime.strptime(data_remota_str, "%Y%m%d").replace(tzinfo=fuso_italia)
+                            giorni_trascorsi = (data_oggi_assoluta - data_remota_obj).days
+                        except:
+                            giorni_trascorsi = 0
+                        
+                        # SCUDO DEI 3 GIORNI: Se il pacco sul foglio è più vecchio di 3 giorni, 
+                        # lo ignoriamo. Questo libera gli indici per i nuovi ordini ricorrenti del mese successivo!
+                        if giorni_trascorsi > 3:
+                            continue
+                            
+                        dest = str(riga.get("Destinatario", "")).strip().upper()
+                        ind = str(riga.get("Indirizzo", "")).strip().upper()
+                        peso = str(riga.get("Peso Lordo", "")).strip()
+                        ddt = str(riga.get("DDT", "")).strip().upper()
+                        
+                        chiave_base = f"{dest}-{ind}-{peso}-{ddt}"
+                        
+                        if chiave_base not in contatori_chiave:
+                            contatori_chiave[chiave_base] = 0
+                        else:
+                            contatori_chiave[chiave_base] += 1
+                            
+                        chiave_univoca_istanza = f"{chiave_base}_I{contatori_chiave[chiave_base]}"
+                        
+                        mappa_dati_esistenti[chiave_univoca_istanza] = {
+                            "ID_Pacco": str(riga.get("ID_Pacco", "")),
+                            "Stato": str(riga.get("Stato", "")),
+                            "Ordinamento": ordinamento_remoto
+                        }
                 except Exception as e:
-                    st.warning("Foglio 'Spedizioni' vuoto o non accessibile. Procedo come primo avvio.")
+                    st.warning("Errore durante l'analisi preliminare. Procedo come primo avvio.")
 
-        # 2. ELABORAZIONE E SCRITTURA
         with st.spinner('Elaborazione super-veloce in corso...'):
-            # Passiamo la mappa alla funzione elabora_dati
-            pacchi_finali = elabora_dati(file_fbn, file_csv_tuo, mappa_stati_esistenti)
+            pacchi_finali = elabora_dati(file_fbn, file_csv_tuo, mappa_dati_esistenti)
             
             if not pacchi_finali:
                 st.warning("Non ho trovato dati validi da elaborare.")
