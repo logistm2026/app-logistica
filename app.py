@@ -261,7 +261,7 @@ def invia_dati_a_google(pacchi_finali):
         return successi
 
 # --- INTERFACCIA UTENTE ---
-st.title("📦 Hub Sincronizzazione Spedizioni")
+st.title("Hub Sincronizzazione Spedizioni")
 st.markdown("Carica i file Excel e CSV per sincronizzarli istantaneamente con il Database.")
 
 col1, col2 = st.columns(2)
