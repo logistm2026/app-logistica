@@ -9,7 +9,7 @@ from datetime import datetime
 
 st.set_page_config(page_title="Hub Logistica", page_icon="📦", layout="centered")
 
-# --- NASCONDI INTERFACCIA STREAMLIT ---
+# NASCONDI INTERFACCIA STREAMLIT
 nascondi_menu = """
     <style>
     [data-testid="stToolbar"] {visibility: hidden !important;}
@@ -21,7 +21,7 @@ nascondi_menu = """
     """
 st.markdown(nascondi_menu, unsafe_allow_html=True)
 
-# --- CONNESSIONE A GOOGLE SHEETS ---
+# CONNESSIONE A GOOGLE SHEETS
 def connetti_google_sheets():
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -33,7 +33,7 @@ def connetti_google_sheets():
         st.error(f"Errore di connessione a Google Fogli: {e}")
         return None
 
-# --- UTILITY: PULIZIA TESTO ---
+# UTILITY: PULIZIA TESTO
 def pulisci_testo(valore):
     """Rimuove spazi duplicati e il '.0' dei numeri interi letti come float"""
     val = " ".join(str(valore).strip().split()).upper()
@@ -41,7 +41,7 @@ def pulisci_testo(valore):
         val = val[:-2]
     return val
 
-# --- FUNZIONE DI ELABORAZIONE (CONTROLLO SOLO SU DESTINATARIO E DDT) ---
+# FUNZIONE DI ELABORAZIONE (CONTROLLO SOLO SU DESTINATARIO E DDT)
 def elabora_dati(file_fbn, file_csv, righe_recenti_database):
     spedizioni = {}
     
@@ -171,7 +171,7 @@ def elabora_dati(file_fbn, file_csv, righe_recenti_database):
 
     return list(spedizioni.values())
 
-# --- SINCRONIZZAZIONE DIRETTA ---
+# SINCRONIZZAZIONE DIRETTA
 def invia_dati_a_google(pacchi_finali):
     doc_google = connetti_google_sheets()
     if doc_google is None: return False
@@ -262,13 +262,13 @@ def invia_dati_a_google(pacchi_finali):
 
 # --- INTERFACCIA UTENTE ---
 st.title("📦 Hub Sincronizzazione Spedizioni")
-st.markdown("Carica le distinte dei corrieri per sincronizzarle istantaneamente con Google Fogli.")
+st.markdown("Carica i file Excel e CSV per sincronizzarli istantaneamente con il Database.")
 
 col1, col2 = st.columns(2)
 with col1:
-    file_fbn = st.file_uploader("📄 Carica File FBN (Excel/CSV)", type=["xlsx", "xls", "csv"])
+    file_fbn = st.file_uploader("📄 Carica File FBN (Excel)", type=["xlsx", "xls", "csv"])
 with col2:
-    file_csv_tuo = st.file_uploader("📊 Carica il tuo CSV", type=["csv"])
+    file_csv_tuo = st.file_uploader("📊 Carica File Fedrigoni (CSV)", type=["csv"])
 
 if file_fbn is not None or file_csv_tuo is not None:
     if st.button("🚀 Fondi e Scrivi su Google Fogli", use_container_width=True):
@@ -321,4 +321,4 @@ if file_fbn is not None or file_csv_tuo is not None:
             else:
                 successi = invia_dati_a_google(pacchi_finali)
                 if successi:
-                    st.success(f"✅ Ottimo! {successi} spedizioni sincronizzate perfettamente!")
+                    st.success(f"✅ Fatto! {successi} spedizioni sincronizzate perfettamente!")
