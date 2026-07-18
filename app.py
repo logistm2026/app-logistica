@@ -106,7 +106,7 @@ def elabora_dati(file_fbn, file_csv, righe_recenti_database):
                     "Peso Lordo": peso_per_foglio, 
                     "DDT": ddt,
                     "Stato": "In Magazzino",
-                    "Email_Operatore": "logist.m2026@gmail.com",
+                    "Email_Operatore": "magazzino@manettitrasportielogistica.com",
                     "Fornitore": "FBN"
                 }
         except Exception as e:
@@ -163,7 +163,7 @@ def elabora_dati(file_fbn, file_csv, righe_recenti_database):
                     "Peso Lordo": peso_csv_per_foglio, 
                     "DDT": ddt_csv,
                     "Stato": "In Magazzino",
-                    "Email_Operatore": "logist.m2026@gmail.com",
+                    "Email_Operatore": "magazzino@manettitrasportielogistica.com",
                     "Fornitore": "FBN"
                 }
         except Exception as e:
@@ -228,7 +228,7 @@ def invia_dati_a_google(pacchi_finali):
                 elif col_clean in ["data ora", "data_ora"]:
                     riga_st.append(ora_attuale_storico)
                 elif col_clean == "operatore":
-                    riga_st.append("logist.m2026@gmail.com")
+                    riga_st.append("magazzino@manettitrasportielogistica.com")
                 else:
                     riga_st.append("")
             da_inserire_storico.append(riga_st)
