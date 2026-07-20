@@ -266,7 +266,7 @@ st.markdown("Carica i file Excel e CSV per sincronizzarli istantaneamente con il
 
 col1, col2 = st.columns(2)
 with col1:
-    file_fbn = st.file_uploader("📄 Carica File FBN (Excel)", type=["xlsx", "xls", "csv"])
+    file_fbn = st.file_uploader("📄 Carica File FBN (Excel)", type=["xlsx", "xls"])
 with col2:
     file_csv_tuo = st.file_uploader("📊 Carica File Fedrigoni (CSV)", type=["csv"])
 
