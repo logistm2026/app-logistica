@@ -297,7 +297,7 @@ if file_fbn is not None or file_csv_tuo is not None:
                             giorni_trascorsi = 0
                         
                         # SCUDO DEI 3 GIORNI + STATO ATTIVO
-                        if giorni_trascorsi > 3 or str(riga.get("Stato", "")) not in ["In Magazzino", ""]:
+                        if giorni_trascorsi > 1 or str(riga.get("Stato", "")) not in ["In Magazzino", ""]:
                             continue
                             
                         dest = pulisci_testo(riga.get("Destinatario", ""))
