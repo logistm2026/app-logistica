@@ -206,32 +206,34 @@ def invia_dati_a_google(pacchi_finali):
             nuova_riga.append(pacco.get(colonna, ""))
             
         if id_pacco in mappa_righe:
+            # SE IL PACCO ESISTE: Lo aggiorna, ma NON scrive nello storico
             riga_num = mappa_righe[id_pacco]
             da_aggiornare.append({
                 'range': f'A{riga_num}:A{riga_num}', 
                 'values': [nuova_riga]
             })
         else:
+            # SE IL PACCO È NUOVO: Lo inserisce E scrive nello storico
             da_inserire.append(nuova_riga)
             
-        if foglio_storico and intestazioni_storico:
-            id_storico = hashlib.md5(f"{id_pacco}-{ora_attuale_storico}-{idx}".encode()).hexdigest()[:8].upper()
-            riga_st = []
-            for col in intestazioni_storico:
-                col_clean = col.strip().lower().replace("_", " ")
-                if col_clean == "id storico":
-                    riga_st.append(id_storico)
-                elif col_clean == "id pacco":
-                    riga_st.append(id_pacco)
-                elif col_clean in ["stato registrato", "stato_registrato"]:
-                    riga_st.append("In Magazzino")
-                elif col_clean in ["data ora", "data_ora"]:
-                    riga_st.append(ora_attuale_storico)
-                elif col_clean == "operatore":
-                    riga_st.append("magazzino@manettitrasportielogistica.com")
-                else:
-                    riga_st.append("")
-            da_inserire_storico.append(riga_st)
+            if foglio_storico and intestazioni_storico:
+                id_storico = hashlib.md5(f"{id_pacco}-{ora_attuale_storico}-{idx}".encode()).hexdigest()[:8].upper()
+                riga_st = []
+                for col in intestazioni_storico:
+                    col_clean = col.strip().lower().replace("_", " ")
+                    if col_clean == "id storico":
+                        riga_st.append(id_storico)
+                    elif col_clean == "id pacco":
+                        riga_st.append(id_pacco)
+                    elif col_clean in ["stato registrato", "stato_registrato"]:
+                        riga_st.append("In Magazzino")
+                    elif col_clean in ["data ora", "data_ora"]:
+                        riga_st.append(ora_attuale_storico)
+                    elif col_clean == "operatore":
+                        riga_st.append("magazzino@manettitrasportielogistica.com")
+                    else:
+                        riga_st.append("")
+                da_inserire_storico.append(riga_st)
             
     successi = 0
     
